@@ -37,15 +37,15 @@ The MP4 fixture verifies cross-platform codec interoperability. A separate direc
 IMFTransform probe measures actual packet delivery at a paced 30 FPS, recording
 codec readbacks, first packet time, packets before final drain, and peak pending
 input frames, observed immediately after submission before draining output.
-This is not capture-to-display latency. Hardware encoder enumeration does not establish
-hardware encoding; the reference encoder is software.
+This is not capture-to-display latency. Hardware encoder enumeration does not
+establish hardware encoding; the reference encoder is software.
 
 The Mac probe requires exactly 30 nonempty, single-picture H.264 samples with
 increasing presentation timestamps, decodes them with VideoToolbox, and checks
 320×180 dimensions and generated pixel variation. The MP4 reader can expose one
 leading empty edit and one terminal empty end marker; reader completion is still
-required after the terminal marker. these contain no coded
-picture and are counted separately. Coded data is never skipped to meet the
+required after the terminal marker. These markers contain no coded picture and
+are counted separately. Coded data is never skipped to meet the
 frame bound. The probe queries actual hardware decoder use and submits the
 compressed pictures to an owned `AVSampleBufferDisplayLayer` window.
 

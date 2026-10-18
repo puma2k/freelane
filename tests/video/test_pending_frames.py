@@ -11,7 +11,9 @@ class PendingFramesTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             source = Path(directory) / 'pending.cpp'
             binary = Path(directory) / 'pending'
-            source.write_text('''#include "pending-frames.hpp"
+            source.write_text('''#include <algorithm>
+#define max(a,b) broken_windows_max_macro
+#include "pending-frames.hpp"
 int main() {
     unsigned peak = pending_peak(0, 2, 0);
     peak = pending_peak(peak, 3, 0); // Third submission before draining.
