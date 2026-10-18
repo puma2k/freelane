@@ -5,6 +5,7 @@ pub mod export;
 pub mod mounts;
 pub mod settings;
 pub mod transfer;
+pub mod video;
 use freelane_agent_protocol::{Action, Outcome, Request, Response, VERSION};
 use std::io::{self, BufRead, Write};
 #[cfg(any(windows, target_os = "linux"))]
@@ -12,6 +13,16 @@ mod clipboard;
 #[cfg(windows)]
 mod windows;
 pub trait Launcher {
+    fn video_support(&self) -> bool {
+        false
+    }
+    fn video_action(
+        &mut self,
+        _: &freelane_agent_protocol::video_control::Operation,
+    ) -> io::Result<freelane_agent_protocol::video_control::Reply> {
+        Err(io::ErrorKind::Unsupported.into())
+    }
+
     fn transfer_folders_support(&self) -> bool {
         false
     }
@@ -100,6 +111,12 @@ pub fn handle(request: Request, launcher: &mut impl Launcher) -> Response {
                         name: "launch".into(),
                         protocol: VERSION,
                     }];
+                    if launcher.video_support() && launcher.window_identity_support() {
+                        features.push(freelane_agent_protocol::Feature {
+                            name: "window_video".into(),
+                            protocol: freelane_agent_protocol::video_control::VERSION,
+                        });
+                    }
                     if launcher.window_input_support() {
                         features.push(freelane_agent_protocol::Feature {
                             name: "window_input".into(),
@@ -175,6 +192,10 @@ pub fn handle(request: Request, launcher: &mut impl Launcher) -> Response {
                                 freelane_agent_protocol::CAPABILITY_VERSION,
                             ]
                             .into_iter()
+                            .chain(
+                                (launcher.video_support() && launcher.window_identity_support())
+                                    .then_some(freelane_agent_protocol::video_control::VERSION),
+                            )
                             .chain(if launcher.clipboard_support() {
                                 Some(freelane_agent_protocol::CLIPBOARD_VERSION)
                             } else {
@@ -240,6 +261,15 @@ pub fn handle(request: Request, launcher: &mut impl Launcher) -> Response {
                     os: std::env::consts::OS.into(),
                     arch: std::env::consts::ARCH.into(),
                 },
+                Action::Video { ref operation } => launcher
+                    .video_action(operation)
+                    .and_then(|report| {
+                        report.validate_for(operation)?;
+                        Ok(Outcome::Video { report })
+                    })
+                    .unwrap_or_else(|error| Outcome::Failed {
+                        message: error.to_string(),
+                    }),
                 Action::TransferFolders { reconnect } => launcher
                     .transfer_folders(reconnect)
                     .map(|report| Outcome::TransferFolders { report })
@@ -317,6 +347,7 @@ pub fn handle(request: Request, launcher: &mut impl Launcher) -> Response {
             freelane_agent_protocol::export::VERSION,
             freelane_agent_protocol::export_catalog::VERSION,
             freelane_agent_protocol::transfer_folders::VERSION,
+            freelane_agent_protocol::video_control::VERSION,
         ]
         .contains(&request.version)
         {
@@ -681,6 +712,16 @@ impl<L> TransferLauncher<L> {
     }
 }
 impl<L: Launcher> Launcher for TransferLauncher<L> {
+    fn video_support(&self) -> bool {
+        self.inner.video_support()
+    }
+    fn video_action(
+        &mut self,
+        operation: &freelane_agent_protocol::video_control::Operation,
+    ) -> io::Result<freelane_agent_protocol::video_control::Reply> {
+        self.inner.video_action(operation)
+    }
+
     fn transfer_folders_support(&self) -> bool {
         true
     }
