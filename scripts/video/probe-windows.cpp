@@ -24,7 +24,7 @@
 #include <vector>
 using Microsoft::WRL::ComPtr;
 using namespace winrt;
-using namespace Windows::Graphics::Capture;
+using namespace winrt::Windows::Graphics::Capture;
 struct Report {
     bool capture_supported=false, owned_pixels_verified=false;
     unsigned capture_frames=0, software_h264_count=0, hardware_h264_count=0, encoded_frames=0;
@@ -64,8 +64,8 @@ void capture(Report& r) {
     if(FAILED(hr)){r.d3d_device="warp";check_hresult(D3D11CreateDevice(nullptr,D3D_DRIVER_TYPE_WARP,nullptr,D3D11_CREATE_DEVICE_BGRA_SUPPORT,nullptr,0,D3D11_SDK_VERSION,&device,nullptr,&context));}
     ComPtr<IDXGIDevice> dxgi;check_hresult(device.As(&dxgi));
     com_ptr<::IInspectable> inspectable;check_hresult(CreateDirect3D11DeviceFromDXGIDevice(dxgi.Get(),inspectable.put()));
-    auto native=inspectable.as<Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice>();
-    auto pool=Direct3D11CaptureFramePool::CreateFreeThreaded(native,Windows::Graphics::DirectX::DirectXPixelFormat::B8G8R8A8UIntNormalized,2,item.Size());
+    auto native=inspectable.as<winrt::Windows::Graphics::DirectX::Direct3D11::IDirect3DDevice>();
+    auto pool=Direct3D11CaptureFramePool::CreateFreeThreaded(native,winrt::Windows::Graphics::DirectX::DirectXPixelFormat::B8G8R8A8UIntNormalized,2,item.Size());
     auto state=std::make_shared<CaptureState>();
     auto token=pool.FrameArrived([state](auto const& source,auto const&) {
         try {auto frame=source.TryGetNextFrame();if(!frame)return;
