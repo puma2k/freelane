@@ -58,6 +58,7 @@ let callback: VTDecompressionOutputCallback = { context, _, status, _, image, _,
     try require(reader.startReading(), "Cannot read compressed fixture")
     var samples: [CMSampleBuffer] = []
     var emptyContainerBuffers = 0
+    var trailingEmptyContainerBuffers = 0
     while let sample = output.copyNextSampleBuffer() {
         let bytes = CMSampleBufferGetTotalSampleSize(sample)
         let count = CMSampleBufferGetNumSamples(sample)
@@ -68,7 +69,13 @@ let callback: VTDecompressionOutputCallback = { context, _, status, _, image, _,
             emptyContainerBuffers += 1
             continue
         }
-        try require(samples.count < 30 && bytes > 0 && bytes <= 2 * 1024 * 1024 && count == 1 && pts.isValid && pts.timescale > 0,
+        // The reader also emits an end marker with no samples, data or valid time.
+        // Permit exactly one after all pictures; never discard coded picture data.
+        if bytes == 0 && count == 0 && !pts.isValid && samples.count == 30 && trailingEmptyContainerBuffers == 0 {
+            trailingEmptyContainerBuffers += 1
+            continue
+        }
+        try require(trailingEmptyContainerBuffers == 0 && samples.count < 30 && bytes > 0 && bytes <= 2 * 1024 * 1024 && count == 1 && pts.isValid && pts.timescale > 0,
                     "Compressed picture: buffers=\(samples.count), bytes=\(bytes), count=\(count), validPTS=\(pts.isValid), pts=\(pts.value)/\(pts.timescale), emptyMarkers=\(emptyContainerBuffers)")
         if samples.isEmpty { try require(CMTimeCompare(pts, .zero) == 0, "First coded picture must start at zero") }
         if let previous = samples.last {
@@ -142,7 +149,8 @@ let callback: VTDecompressionOutputCallback = { context, _, status, _, image, _,
     let architecture = "x86_64"
     #endif
     return ["schema": 1, "platform": "macos", "architecture": architecture,
-            "decoded_frames": count, "leading_empty_container_buffers": emptyContainerBuffers, "dimensions_verified": valid,
+            "decoded_frames": count, "leading_empty_container_buffers": emptyContainerBuffers,
+            "trailing_empty_container_buffers": trailingEmptyContainerBuffers, "dimensions_verified": valid,
             "pixel_variation_verified": varying, "hardware_decoder_used": hardware,
             "hardware_readback_available": hardwareReadback, "realtime_property_applied": realtime,
             "owned_surface_created": true, "surface_rendering": rendering,
