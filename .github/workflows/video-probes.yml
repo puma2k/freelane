@@ -1,0 +1,86 @@
+name: Experimental native video probes
+on:
+  push:
+    paths: ['scripts/video/**', 'tests/video/**', '.github/workflows/video-probes.yml']
+  pull_request:
+    paths: ['scripts/video/**', 'tests/video/**', '.github/workflows/video-probes.yml']
+permissions:
+  contents: read
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build x64 and ARM64 SDK probes
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          New-Item -ItemType Directory -Force target/video-probes | Out-Null
+          $vs = & "${env:ProgramFiles(x86)}/Microsoft Visual Studio/Installer/vswhere.exe" -latest -products '*' -requires Microsoft.VisualStudio.Component.VC.Tools.x86.x64 -property installationPath
+          foreach ($arch in @('amd64','arm64')) {
+            $script = Join-Path $env:RUNNER_TEMP "freelane-video-$arch.cmd"
+            @('@echo off', "call `"$vs\Common7\Tools\VsDevCmd.bat`" -no_logo -host_arch=amd64 -arch=$arch", 'if errorlevel 1 exit /b 1', "cl /nologo /std:c++17 /EHsc /W4 /DUNICODE /D_UNICODE /Fe:target\video-probes\probe-$arch.exe scripts\video\probe-windows.cpp mfplat.lib mfreadwrite.lib mfuuid.lib ole32.lib d3d11.lib dxgi.lib windowsapp.lib user32.lib", 'exit /b %errorlevel%') | Set-Content -Encoding ascii $script
+            & cmd /d /c $script *> "target/video-probes/build-$arch.log"
+            if ($LASTEXITCODE -ne 0) {
+              Get-Content "target/video-probes/build-$arch.log" -Tail 20 | ForEach-Object { Write-Output "::error title=Native probe build::$_" }
+              throw "Probe compilation failed: $arch"
+            }
+          }
+      - name: Exercise owned x64 capture/codec and no-overwrite refusal
+        shell: pwsh
+        run: |
+          $folder = Join-Path $PWD 'target/video-probes/generated'
+          $exe = Join-Path $PWD 'target/video-probes/probe-amd64.exe'
+          $p = Start-Process $exe -ArgumentList "`"$folder`"" -PassThru -NoNewWindow
+          if (-not $p.WaitForExit(60000)) { $p.Kill(); throw 'Owned video probe timed out' }
+          if ($p.ExitCode -ne 0) { throw "Owned video probe exited $($p.ExitCode)" }
+          $r = Get-Content "$folder/report.json" -Raw | ConvertFrom-Json
+          if ($r.architecture -ne 'x86_64' -or $r.encoded_frames -ne 30) { throw "Reference encoding failed; HRESULT $($r.encoder_hresult)" }
+          $before = (Get-FileHash "$folder/fixture.mp4" -Algorithm SHA256).Hash
+          & $exe $folder
+          if ($LASTEXITCODE -ne 2 -or (Get-FileHash "$folder/fixture.mp4" -Algorithm SHA256).Hash -ne $before) { throw 'Existing destination was not preserved' }
+          $global:LASTEXITCODE = 0
+      - uses: actions/upload-artifact@v4
+        with:
+          name: experimental-windows-video-probe
+          path: |
+            target/video-probes/probe-*.exe
+            target/video-probes/generated/*
+          if-no-files-found: error
+  macos:
+    needs: windows
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: experimental-windows-video-probe
+          path: target/video-probes/input
+      - name: Build and exercise native compressed decode and surface
+        run: |
+          set -euo pipefail
+          swiftc -O scripts/video/probe-macos.swift -o target/video-probes/probe-macos
+          python3 - <<'PY'
+          import subprocess,json
+          from pathlib import Path
+          fixture=next(Path('target/video-probes/input').rglob('fixture.mp4'))
+          process=subprocess.run(['target/video-probes/probe-macos',str(fixture)],capture_output=True,text=True,timeout=60)
+          if process.returncode:
+              print('::error title=Mac video probe::'+process.stderr[-1600:].replace('\n','%0A'))
+              raise SystemExit(process.returncode)
+          Path('target/video-probes/mac-report.json').write_text(process.stdout)
+          r=json.loads(process.stdout)
+          assert r['architecture']=='arm64' and r['decoded_frames']==30 and r['dimensions_verified'] and r['pixel_variation_verified'],r
+          PY
+      - name: Assess native evidence without promoting x64 to ARM acceptance
+        run: |
+          set -euo pipefail
+          python3 -m unittest discover -s tests/video -v
+          python3 scripts/video/report.py target/video-probes/input/generated/report.json target/video-probes/mac-report.json > target/video-probes/assessment.json
+      - uses: actions/upload-artifact@v4
+        with:
+          name: experimental-macos-video-probe
+          path: |
+            target/video-probes/mac-report.json
+            target/video-probes/assessment.json
+          if-no-files-found: error
