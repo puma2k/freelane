@@ -248,6 +248,15 @@ fn uefi_boot_with_threading(threading: Option<qemu::TcgThreading>) {
     fs::write(&config_path, toml::to_string_pretty(&config).unwrap()).unwrap();
     let mut backend = QemuBackend::new(&config_path).unwrap();
     backend.prepare(&config).unwrap();
+    use std::os::unix::fs::PermissionsExt;
+    assert_eq!(
+        fs::metadata(backend.directory().join("lock"))
+            .unwrap()
+            .permissions()
+            .mode()
+            & 0o077,
+        0
+    );
     let mut second = QemuBackend::new(&config_path).unwrap();
     assert!(
         second.prepare(&config).is_err(),

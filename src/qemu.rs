@@ -707,6 +707,7 @@ impl QemuBackend {
         Ok(())
     }
     fn prepare_inner(&mut self, config: &Config) -> Result<()> {
+        use std::os::unix::fs::OpenOptionsExt;
         if self.child.is_some() {
             return Err(Error("QEMU already prepared".into()));
         }
@@ -735,6 +736,7 @@ impl QemuBackend {
             .truncate(false)
             .read(true)
             .write(true)
+            .mode(0o600)
             .open(self.directory.join("lock"))
             .map_err(|e| Error(e.to_string()))?;
         lock.try_lock_exclusive()

@@ -38,8 +38,11 @@ fn private_file(path: &Path, owner: u32, create: bool) -> std::io::Result<File> 
         .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC)
         .open(path)?;
     let metadata = file.metadata()?;
+    // Older supervisors created 0644 locks under umask0022. Their parent is
+    // verified0700; allow read bits, but never another user's write access.
+    let forbidden = if create { 0o077 } else { 0o022 };
     if !metadata.is_file()
-        || metadata.mode() & 0o077 != 0
+        || metadata.mode() & forbidden != 0
         || metadata.uid() != owner
         || metadata.nlink() != 1
     {

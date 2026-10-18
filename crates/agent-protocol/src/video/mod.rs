@@ -45,8 +45,8 @@ impl Record {
             || self.height == 0
             || self.width > 1920
             || self.height > 1080
-            || self.width % 2 != 0
-            || self.height % 2 != 0
+            || !self.width.is_multiple_of(2)
+            || !self.height.is_multiple_of(2)
         {
             return Err(invalid("Invalid video dimensions"));
         }

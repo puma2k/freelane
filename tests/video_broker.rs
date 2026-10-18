@@ -186,7 +186,7 @@ fn partial_record_has_absolute_deadline_despite_trickle() {
     let (b, mut peer) = f.connect();
     let producer = thread::spawn(move || {
         for _ in 0..30 {
-            if peer.write_all(&[b'F']).is_err() {
+            if peer.write_all(b"F").is_err() {
                 break;
             }
             thread::sleep(Duration::from_millis(100));
@@ -259,4 +259,12 @@ fn broker_descriptor_is_not_inherited_by_unrelated_child() {
     let _ = child.kill();
     let _ = child.wait();
     assert_eq!(result.unwrap(), 0, "child retained the video descriptor");
+}
+
+#[test]
+fn existing_readable_supervisor_lock_inside_private_runtime_is_compatible() {
+    let f = Fixture::new();
+    fs::set_permissions(f.dir.join("lock"), fs::Permissions::from_mode(0o644)).unwrap();
+    let (broker, _peer) = f.connect();
+    drop(broker);
 }
