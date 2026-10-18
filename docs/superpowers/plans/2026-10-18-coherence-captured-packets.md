@@ -20,15 +20,17 @@
 Files: `scripts/video/bgra-nv12.hpp`, `tests/video/test_bgra_nv12.py`.
 Interface: `Bytes bgra_nv12(const uint8_t*, size_t bytes, size_t stride, unsigned width, unsigned height)` produces scaled 320×180 limited-range BT.601 NV12; validates input up to 1920×1080. Use nearest-neighbor scaling for this correctness fixture.
 
-- [ ] Add compiled portable test: gray Y/neutral UV, padded stride, chroma order, invalid buffer/stride/dimensions; observe missing-header RED.
-- [ ] Implement converter; run full portable suite; commit.
+- [x] Add compiled portable test: gray Y/neutral UV, padded stride, chroma order, invalid buffer/stride/dimensions; observe missing-header RED.
+- [x] Implement converter; run full portable suite; commit.
 
 ### Task 2: Owned capture feeds actual encoder
 
 Files: `scripts/video/captured-frames.hpp`, `direct-encoder.hpp`, `probe-windows.cpp`, `.github/workflows/video-probes.yml`.
 Interface: `CapturedFrames::next(unsigned)->Bytes`; optional source callback and filename on `direct_encode`. Report separate captured frame count, packet count, config count, HRESULT.
 
-- [ ] Add native CI assertions for captured fixture (initially missing report values fail).
-- [ ] Capture repainted owned window through latest-slot WGC, validate center shade, map staging texture and invoke Task 1 conversion. Feed callback buffers to existing direct MFT without replacing generated fixture.
-- [ ] On ARM Windows, assert 30 captured frames, 30 packets and one configuration. Rust validates captured FLV1; Mac decodes captured fixture and verifies 30 changing frames and hardware decode. Exercise injected asynchronous failure for raw input too.
-- [ ] Run portable tests, full Rust checks as appropriate; one fresh review; fix Important/Critical once, record actual native results, push. No product/release/performance claim.
+- [x] Add native CI assertions for captured fixture (initially missing report values fail).
+- [x] Capture repainted owned window through latest-slot WGC, validate center shade, map staging texture and invoke Task 1 conversion. Feed callback buffers to existing direct MFT without replacing generated fixture.
+- [x] On ARM Windows, assert 30 captured frames, 30 packets and one configuration. Rust validates captured FLV1; Mac decodes captured fixture and verifies 30 changing frames and hardware decode. Exercise injected asynchronous failure for raw input too.
+- [x] Run portable tests, full Rust checks as appropriate; one fresh review; fix Important/Critical once, record actual native results, push. No product/release/performance claim.
+
+Evidence: native run39141763259 passed at9ff4a63. All three raw/MP4 input failure paths exercised; portablevideo11 passed, LinuxRust261 passed/9ignored, clippy/fmt passed. Fresh reviewer found no Important/Critical findings. Deferred minor: decoder verifies variation rather than exact shade ordering. Separate existing Mac broker EOF test fails; diagnostics tracked independently, not counted as capture-probe success.
