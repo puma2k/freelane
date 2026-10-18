@@ -2,6 +2,7 @@
 // Direct synchronous software-MFT probe: distinguishes packet delivery from file finalization.
 #include <mferror.h>
 #include <thread>
+#include <functional>
 #include "pending-frames.hpp"
 #include "annexb.hpp"
 inline ComPtr<IMFMediaType> direct_type(const GUID& subtype) {
@@ -13,8 +14,9 @@ inline ComPtr<IMFMediaType> direct_type(const GUID& subtype) {
     if(subtype==MFVideoFormat_NV12){check_hresult(type->SetUINT32(MF_MT_FIXED_SIZE_SAMPLES,TRUE));check_hresult(type->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT,TRUE));check_hresult(type->SetUINT32(MF_MT_SAMPLE_SIZE,320*180*3/2));check_hresult(type->SetUINT32(MF_MT_DEFAULT_STRIDE,320));}
     return type;
 }
-inline void direct_encode(Report& r,const std::filesystem::path& directory) {
-    std::ofstream raw_output(directory/L"packets.flv",std::ios::binary);
+inline void direct_encode(Report& r,const std::filesystem::path& directory,
+    const std::function<freelane_video::Bytes(unsigned)>& source={},const wchar_t* filename=L"packets.flv") {
+    std::ofstream raw_output(directory/filename,std::ios::binary);
     freelane_video::require(static_cast<bool>(raw_output),"Cannot create packet fixture");
     freelane_video::PacketConverter converter;freelane_video::PacketWriter packet_writer(raw_output);
     MFT_REGISTER_TYPE_INFO output_type{MFMediaType_Video,MFVideoFormat_H264};IMFActivate** entries=nullptr;UINT32 count=0;
@@ -62,8 +64,12 @@ inline void direct_encode(Report& r,const std::filesystem::path& directory) {
         throw hresult_error(E_UNEXPECTED);
     };
     for(unsigned i=0;i<30;++i){
+        freelane_video::Bytes captured;
+        if(source){captured=source(i);freelane_video::require(captured.size()==320*180*3/2,"Invalid captured NV12 frame");}
         ComPtr<IMFMediaBuffer> buffer;check_hresult(MFCreateMemoryBuffer(320*180*3/2,&buffer));BYTE* bytes=nullptr;check_hresult(buffer->Lock(&bytes,nullptr,nullptr));
-        memset(bytes,82+(i%4)*20,320*180);memset(bytes+320*180,128,320*180/2);check_hresult(buffer->Unlock());check_hresult(buffer->SetCurrentLength(320*180*3/2));
+        if(source)memcpy(bytes,captured.data(),captured.size());
+        else{memset(bytes,82+(i%4)*20,320*180);memset(bytes+320*180,128,320*180/2);}
+        check_hresult(buffer->Unlock());check_hresult(buffer->SetCurrentLength(320*180*3/2));
         ComPtr<IMFSample> sample;check_hresult(MFCreateSample(&sample));check_hresult(sample->AddBuffer(buffer.Get()));check_hresult(sample->SetSampleTime(i*333333LL));check_hresult(sample->SetSampleDuration(333333));
         check_hresult(transform->ProcessInput(input_id,sample.Get(),0));++submitted;
         r.direct_max_pending=pending_peak(r.direct_max_pending,submitted,r.direct_packet_count);

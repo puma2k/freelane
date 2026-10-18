@@ -47,6 +47,7 @@ jobs:
           if ($r.architecture -ne $expected -or $r.encoded_frames -ne 30) { throw "Reference encoding failed; HRESULT $($r.encoder_hresult)" }
           if ($r.direct_packet_count -ne 30) { throw "Direct streaming probe missing/failed; HRESULT $($r.direct_hresult)" }
           if ($r.raw_stream_pictures -ne 30 -or $r.raw_stream_configurations -ne 1 -or $r.raw_stream_idrs -lt 1 -or $r.direct_hresult -ne 0) { throw 'Direct raw packet interoperability fixture failed' }
+          if ($r.captured_frames -ne 30 -or $r.captured_packets -ne 30 -or $r.captured_configurations -ne 1 -or $r.captured_hresult -ne 0) { throw "Owned captured packet pipeline failed; HRESULT $($r.captured_hresult)" }
           $before = (Get-FileHash "$folder/fixture.mp4" -Algorithm SHA256).Hash
           & $exe $folder
           if ($LASTEXITCODE -ne 2 -or (Get-FileHash "$folder/fixture.mp4" -Algorithm SHA256).Hash -ne $before) { throw 'Existing destination was not preserved' }
@@ -101,6 +102,8 @@ jobs:
           toolchain: 1.99.0
       - name: Validate direct Windows packets with the Rust protocol
         run: cargo run --locked -p freelane-agent-protocol --example video_check -- target/video-probes/input/generated/packets.flv
+      - name: Validate captured Windows packets with the Rust protocol
+        run: cargo run --locked -p freelane-agent-protocol --example video_check -- target/video-probes/input/generated/captured-packets.flv
       - name: Exercise native compressed decode and surface
         run: |
           set -euo pipefail
@@ -130,6 +133,19 @@ jobs:
           d=json.loads(direct.stdout)
           print('::notice title=Mac direct packet report::'+json.dumps(d))
           assert d['architecture']=='arm64' and d['direct_packets_verified'] and d['decoded_frames']==30 and d['dimensions_verified'] and d['pixel_variation_verified'] and d['hardware_readback_available'] and d['hardware_decoder_used'],d
+          captured=fixture.with_name('captured-packets.flv')
+          capture=subprocess.run(['target/video-probes/probe-macos',str(captured)],capture_output=True,text=True,timeout=60)
+          Path('target/video-probes/mac-captured-stderr.txt').write_text(capture.stderr)
+          if capture.returncode:
+              print('::error title=Mac captured packet probe::'+capture.stderr[-1600:].replace('\n','%0A'))
+              raise SystemExit(capture.returncode)
+          Path('target/video-probes/mac-captured-report.json').write_text(capture.stdout)
+          c=json.loads(capture.stdout)
+          print('::notice title=Mac captured packet report::'+json.dumps(c))
+          assert c['architecture']=='arm64' and c['direct_packets_verified'] and c['decoded_frames']==30 and c['dimensions_verified'] and c['pixel_variation_verified'] and c['hardware_readback_available'] and c['hardware_decoder_used'],c
+          for raw_input in (raw,captured):
+              failure=subprocess.run(['target/video-probes/probe-macos',str(raw_input),'--fail-after-first-submit'],capture_output=True,text=True,timeout=60)
+              assert failure.returncode==1 and 'Injected failure after asynchronous submission' in failure.stderr and not failure.stdout,failure
           PY
       - name: Assess native evidence without promoting x64 to ARM acceptance
         run: |
@@ -150,4 +166,6 @@ jobs:
             target/video-probes/mac-stderr.txt
             target/video-probes/mac-raw-report.json
             target/video-probes/mac-raw-stderr.txt
+            target/video-probes/mac-captured-report.json
+            target/video-probes/mac-captured-stderr.txt
           if-no-files-found: warn

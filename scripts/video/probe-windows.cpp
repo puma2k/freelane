@@ -37,7 +37,8 @@ struct Report {
     unsigned raw_pictures=0,raw_configurations=0,raw_idrs=0;
     bool direct_low_latency=false, direct_zero_b=false, direct_worker_applied=false;
     ULONG direct_worker_threads=0;
-    HRESULT direct_hr=E_PENDING;
+    HRESULT direct_hr=E_PENDING, captured_hr=E_PENDING;
+    unsigned captured_frames=0,captured_packets=0,captured_configurations=0;
 };
 struct Window {
     HWND handle=nullptr; HBRUSH brush=nullptr; HINSTANCE instance=GetModuleHandleW(nullptr);
@@ -127,6 +128,7 @@ bool codec_uint(ICodecAPI* api,const GUID& key,ULONG wanted,ULONG& actual_value)
     VariantClear(&actual);return SUCCEEDED(set)&&SUCCEEDED(get)&&number&&actual_value==wanted;
 }
 #include "direct-encoder.hpp"
+#include "captured-frames.hpp"
 void encode(Report& r,const std::filesystem::path& path) {
     r.software_h264_count=encoders(MFT_ENUM_FLAG_SYNCMFT|MFT_ENUM_FLAG_SORTANDFILTER);
     r.hardware_h264_count=encoders(MFT_ENUM_FLAG_HARDWARE|MFT_ENUM_FLAG_SORTANDFILTER);
@@ -166,6 +168,7 @@ int wmain(int argc,wchar_t** argv) {
         try{capture(r);}catch(const hresult_error& e){r.capture_hr=e.code().value;}catch(...){r.capture_hr=E_FAIL;}
         try{encode(r,std::filesystem::path(argv[1])/L"fixture.mp4");}catch(const hresult_error& e){r.encoder_hr=e.code().value;}catch(...){r.encoder_hr=E_FAIL;}
         try{direct_encode(r,std::filesystem::path(argv[1]));}catch(const hresult_error& e){r.direct_hr=e.code().value;}catch(...){r.direct_hr=E_FAIL;}
+        try{CapturedFrames frames;Report stream;direct_encode(stream,std::filesystem::path(argv[1]),[&](unsigned i){return frames.next(i);},L"captured-packets.flv");r.captured_frames=frames.captured;r.captured_packets=stream.raw_pictures;r.captured_configurations=stream.raw_configurations;r.captured_hr=stream.direct_hr;}catch(const hresult_error& e){r.captured_hr=e.code().value;}catch(const std::exception& e){OutputDebugStringA(e.what());r.captured_hr=E_FAIL;}catch(...){r.captured_hr=E_FAIL;}
     }catch(...){r.encoder_hr=E_FAIL;}
     if(mf)MFShutdown();if(apartment)uninit_apartment();
 #ifdef _M_ARM64
@@ -174,6 +177,6 @@ int wmain(int argc,wchar_t** argv) {
     const char* arch="x86_64";
 #endif
     std::ofstream out(std::filesystem::path(argv[1])/L"report.json");
-    out<<std::boolalpha<<"{\"schema\":1,\"platform\":\"windows\",\"architecture\":\""<<arch<<"\",\"capture_supported\":"<<r.capture_supported<<",\"capture_frames\":"<<r.capture_frames<<",\"owned_pixels_verified\":"<<r.owned_pixels_verified<<",\"software_h264_count\":"<<r.software_h264_count<<",\"hardware_h264_count\":"<<r.hardware_h264_count<<",\"encoded_frames\":"<<r.encoded_frames<<",\"low_latency_applied\":"<<r.low_latency_applied<<",\"zero_b_frames_applied\":"<<r.zero_b_frames_applied<<",\"raw_packet_latency_measured\":"<<(SUCCEEDED(r.direct_hr)&&r.direct_packet_count==30)<<",\"capture_hresult\":"<<static_cast<long>(r.capture_hr)<<",\"encoder_hresult\":"<<static_cast<long>(r.encoder_hr)<<",\"capture_validation_cpu_readback\":true,\"d3d_device_kind\":\""<<r.d3d_device<<"\",\"reference_encoder_hardware_requested\":false,\"encode_elapsed_ms\":"<<r.encode_elapsed_ms<<",\"direct_packet_count\":"<<r.direct_packet_count<<",\"direct_max_pending_frames\":"<<r.direct_max_pending<<",\"direct_packets_before_drain\":"<<r.direct_before_drain<<",\"direct_first_packet_us\":"<<r.direct_first_packet_us<<",\"direct_input_cadence_fps\":30,\"direct_low_latency_applied\":"<<r.direct_low_latency<<",\"direct_zero_b_frames_applied\":"<<r.direct_zero_b<<",\"direct_hresult\":"<<static_cast<long>(r.direct_hr)<<",\"direct_worker_threads\":"<<r.direct_worker_threads<<",\"direct_worker_threads_applied\":"<<r.direct_worker_applied<<",\"raw_stream_pictures\":"<<r.raw_pictures<<",\"raw_stream_configurations\":"<<r.raw_configurations<<",\"raw_stream_idrs\":"<<r.raw_idrs<<"}\n";
+    out<<std::boolalpha<<"{\"schema\":1,\"platform\":\"windows\",\"architecture\":\""<<arch<<"\",\"capture_supported\":"<<r.capture_supported<<",\"capture_frames\":"<<r.capture_frames<<",\"owned_pixels_verified\":"<<r.owned_pixels_verified<<",\"software_h264_count\":"<<r.software_h264_count<<",\"hardware_h264_count\":"<<r.hardware_h264_count<<",\"encoded_frames\":"<<r.encoded_frames<<",\"low_latency_applied\":"<<r.low_latency_applied<<",\"zero_b_frames_applied\":"<<r.zero_b_frames_applied<<",\"raw_packet_latency_measured\":"<<(SUCCEEDED(r.direct_hr)&&r.direct_packet_count==30)<<",\"capture_hresult\":"<<static_cast<long>(r.capture_hr)<<",\"encoder_hresult\":"<<static_cast<long>(r.encoder_hr)<<",\"capture_validation_cpu_readback\":true,\"d3d_device_kind\":\""<<r.d3d_device<<"\",\"reference_encoder_hardware_requested\":false,\"encode_elapsed_ms\":"<<r.encode_elapsed_ms<<",\"direct_packet_count\":"<<r.direct_packet_count<<",\"direct_max_pending_frames\":"<<r.direct_max_pending<<",\"direct_packets_before_drain\":"<<r.direct_before_drain<<",\"direct_first_packet_us\":"<<r.direct_first_packet_us<<",\"direct_input_cadence_fps\":30,\"direct_low_latency_applied\":"<<r.direct_low_latency<<",\"direct_zero_b_frames_applied\":"<<r.direct_zero_b<<",\"direct_hresult\":"<<static_cast<long>(r.direct_hr)<<",\"direct_worker_threads\":"<<r.direct_worker_threads<<",\"direct_worker_threads_applied\":"<<r.direct_worker_applied<<",\"raw_stream_pictures\":"<<r.raw_pictures<<",\"raw_stream_configurations\":"<<r.raw_configurations<<",\"raw_stream_idrs\":"<<r.raw_idrs<<",\"captured_frames\":"<<r.captured_frames<<",\"captured_packets\":"<<r.captured_packets<<",\"captured_configurations\":"<<r.captured_configurations<<",\"captured_hresult\":"<<static_cast<long>(r.captured_hr)<<"}\n";
     return out?0:3;
 }
