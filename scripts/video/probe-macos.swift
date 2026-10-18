@@ -43,7 +43,7 @@ let callback: VTDecompressionOutputCallback = { context, _, status, _, image, _,
     state.shades.insert(shade)
     state.lock.unlock()
 }
-@MainActor func probe(_ url: URL) throws -> [String: Any] {
+@MainActor func probe(_ url: URL, failAfterFirstSubmission: Bool = false) throws -> [String: Any] {
     let attributes = try FileManager.default.attributesOfItem(atPath: url.path)
     try require(attributes[.type] as? FileAttributeType == .typeRegular, "Fixture must be a regular file")
     let length = (attributes[.size] as? NSNumber)?.intValue ?? 0
@@ -73,7 +73,7 @@ let callback: VTDecompressionOutputCallback = { context, _, status, _, image, _,
         // Permit exactly one after all pictures; never discard coded picture data.
         if bytes == 0 && count == 0 && !pts.isValid && samples.count == 30 && trailingEmptyContainerBuffers == 0 {
             trailingEmptyContainerBuffers += 1
-            continue
+            break
         }
         try require(trailingEmptyContainerBuffers == 0 && samples.count < 30 && bytes > 0 && bytes <= 2 * 1024 * 1024 && count == 1 && pts.isValid && pts.timescale > 0,
                     "Compressed picture: buffers=\(samples.count), bytes=\(bytes), count=\(count), validPTS=\(pts.isValid), pts=\(pts.value)/\(pts.timescale), emptyMarkers=\(emptyContainerBuffers)")
@@ -94,13 +94,19 @@ let callback: VTDecompressionOutputCallback = { context, _, status, _, image, _,
     let pixels: [String: Any] = [kCVPixelBufferPixelFormatTypeKey as String: kCVPixelFormatType_32BGRA, kCVPixelBufferMetalCompatibilityKey as String: true]
     try require(VTDecompressionSessionCreate(allocator: kCFAllocatorDefault, formatDescription: format, decoderSpecification: specification as CFDictionary, imageBufferAttributes: pixels as CFDictionary, outputCallback: &record, decompressionSessionOut: &decoder) == noErr, "Cannot create decompression session")
     guard let decoder = decoder else { throw ProbeFailure(message: "No decoder") }
-    defer { VTDecompressionSessionWaitForAsynchronousFrames(decoder); VTDecompressionSessionInvalidate(decoder) }
+    defer {
+        withExtendedLifetime(state) {
+            VTDecompressionSessionWaitForAsynchronousFrames(decoder)
+            VTDecompressionSessionInvalidate(decoder)
+        }
+    }
     let realtime = VTSessionSetProperty(decoder, key: kVTDecompressionPropertyKey_RealTime, value: kCFBooleanTrue) == noErr
     let started = CFAbsoluteTimeGetCurrent()
     for sample in samples {
         try require(state.slots.wait(timeout: .now() + 5) == .success, "Decoder output stalled")
         let status = VTDecompressionSessionDecodeFrame(decoder, sampleBuffer: sample, flags: [._EnableAsynchronousDecompression], frameRefcon: nil, infoFlagsOut: nil)
         if status != noErr { state.slots.signal(); throw ProbeFailure(message: "Decoder rejected compressed sample") }
+        if failAfterFirstSubmission { throw ProbeFailure(message: "Injected failure after asynchronous submission") }
     }
     try require(VTDecompressionSessionWaitForAsynchronousFrames(decoder) == noErr, "Decoder did not finish")
     let decodeMilliseconds = (CFAbsoluteTimeGetCurrent() - started) * 1000
@@ -161,8 +167,10 @@ let callback: VTDecompressionOutputCallback = { context, _, status, _, image, _,
 @main struct ProbeMain {
     @MainActor static func main() {
         do {
-            try require(CommandLine.arguments.count == 2, "Usage: probe-macos GENERATED_FIXTURE_MP4")
-            let result = try probe(URL(fileURLWithPath: CommandLine.arguments[1]))
+            let arguments = CommandLine.arguments
+            let injectedFailure = arguments.count == 3 && arguments[2] == "--fail-after-first-submit"
+            try require(arguments.count == 2 || injectedFailure, "Usage: probe-macos GENERATED_FIXTURE_MP4 [--fail-after-first-submit]")
+            let result = try probe(URL(fileURLWithPath: arguments[1]), failAfterFirstSubmission: injectedFailure)
             let data = try JSONSerialization.data(withJSONObject: result, options: [.sortedKeys])
             FileHandle.standardOutput.write(data); FileHandle.standardOutput.write(Data([10]))
         } catch {

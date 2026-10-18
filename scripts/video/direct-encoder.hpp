@@ -2,6 +2,7 @@
 // Direct synchronous software-MFT probe: distinguishes packet delivery from file finalization.
 #include <mferror.h>
 #include <thread>
+#include "pending-frames.hpp"
 inline ComPtr<IMFMediaType> direct_type(const GUID& subtype) {
     ComPtr<IMFMediaType> type;check_hresult(MFCreateMediaType(&type));
     check_hresult(type->SetGUID(MF_MT_MAJOR_TYPE,MFMediaType_Video));check_hresult(type->SetGUID(MF_MT_SUBTYPE,subtype));
@@ -54,6 +55,7 @@ inline void direct_encode(Report& r) {
         memset(bytes,82+(i%4)*20,320*180);memset(bytes+320*180,128,320*180/2);check_hresult(buffer->Unlock());check_hresult(buffer->SetCurrentLength(320*180*3/2));
         ComPtr<IMFSample> sample;check_hresult(MFCreateSample(&sample));check_hresult(sample->AddBuffer(buffer.Get()));check_hresult(sample->SetSampleTime(i*333333LL));check_hresult(sample->SetSampleDuration(333333));
         check_hresult(transform->ProcessInput(input_id,sample.Get(),0));++submitted;
+        r.direct_max_pending=pending_peak(r.direct_max_pending,submitted,r.direct_packet_count);
         const auto next_input=start+std::chrono::microseconds((i+1)*1000000LL/30);
         do {
             drain();
