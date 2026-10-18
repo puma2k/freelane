@@ -120,6 +120,7 @@ impl<E: Encoder> Session<E> {
                     return Err(error);
                 }
                 self.active.as_mut().unwrap().confirmed = true;
+                self.check_owned()?; // Setup may have outlived the original HWND/worker.
                 Ok(Reply::Started {
                     parameters: parameters.clone(),
                 })

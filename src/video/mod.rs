@@ -1,6 +1,8 @@
-//! Dedicated video reader foundations. Native capture/control negotiation is not enabled.
+//! Owned binary video reader and negotiated control; native backend/frontend integration is separate.
+mod control;
 mod reader;
 use crate::{qemu, Error, Result};
+pub use control::{fresh_binding, require_capability};
 use freelane_agent_protocol::{
     video::{read_record, Binding, Receiver, Record},
     WindowTarget,

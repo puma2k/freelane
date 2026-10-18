@@ -21,6 +21,7 @@ struct Signals {
     fail_start: AtomicBool,
     fail_stop: AtomicBool,
     die: AtomicBool,
+    stale_on_start: AtomicBool,
 }
 struct Worker {
     child: Option<Child>,
@@ -40,6 +41,9 @@ impl Encoder for Worker {
     fn start(&mut self, _: &Parameters) -> io::Result<()> {
         self.signals.starts.fetch_add(1, Ordering::SeqCst);
         self.child = Some(worker_child()?);
+        if self.signals.stale_on_start.swap(false, Ordering::SeqCst) {
+            self.signals.stale.store(true, Ordering::SeqCst);
+        }
         if self.signals.fail_start.swap(false, Ordering::SeqCst) {
             Err(io::Error::other("startup failed after spawn"))
         } else {
@@ -355,5 +359,28 @@ fn ended_worker_does_not_block_a_fresh_owner_or_replay_old_start() {
     next.binding.generation += 1;
     s.action(&Operation::Start { parameters: next }).unwrap();
     assert_eq!(signals.starts.load(Ordering::SeqCst), 2);
+    assert_eq!(signals.stops.load(Ordering::SeqCst), 1);
+}
+
+#[test]
+fn startup_must_not_acknowledge_a_target_replaced_during_setup() {
+    let (mut s, signals) = session();
+    signals.stale_on_start.store(true, Ordering::SeqCst);
+    assert!(s
+        .action(&Operation::Start {
+            parameters: parameters()
+        })
+        .is_err());
+    assert_eq!(signals.stops.load(Ordering::SeqCst), 1);
+}
+#[test]
+fn startup_must_not_acknowledge_an_already_ended_worker() {
+    let (mut s, signals) = session();
+    signals.die.store(true, Ordering::SeqCst);
+    assert!(s
+        .action(&Operation::Start {
+            parameters: parameters()
+        })
+        .is_err());
     assert_eq!(signals.stops.load(Ordering::SeqCst), 1);
 }

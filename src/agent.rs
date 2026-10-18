@@ -8,6 +8,35 @@ use std::{
     path::Path,
     time::{Duration, Instant},
 };
+/// Start is capability-gated; Stop remains possible if a backend disappears after Start.
+pub fn video_request(
+    config: &Path,
+    operation: &freelane_agent_protocol::video_control::Operation,
+) -> Result<freelane_agent_protocol::video_control::Reply> {
+    operation.validate().map_err(|e| Error(e.to_string()))?;
+    if matches!(
+        operation,
+        freelane_agent_protocol::video_control::Operation::Start { .. }
+    ) {
+        crate::video::require_capability(config)?;
+    }
+    let response = request_vm(
+        config,
+        Action::Video {
+            operation: operation.clone(),
+        },
+        freelane_agent_protocol::video_control::VERSION,
+    )?;
+    match response.outcome {
+        freelane_agent_protocol::Outcome::Video { report } => {
+            report
+                .validate_for(operation)
+                .map_err(|e| Error(e.to_string()))?;
+            Ok(report)
+        }
+        _ => Err(Error("Invalid video control response".into())),
+    }
+}
 pub fn request(config: &Path, action: Action) -> Result<Response> {
     request_vm(config, action, VERSION)
 }
@@ -221,6 +250,9 @@ fn request_socket_cancellable(
     let expected = matches!(
         (&request.action, &response.outcome),
         (
+            Action::Video { .. },
+            freelane_agent_protocol::Outcome::Video { .. }
+        ) | (
             Action::TransferFolders { .. },
             freelane_agent_protocol::Outcome::TransferFolders { .. }
         ) | (
@@ -325,6 +357,9 @@ fn request_socket_cancellable(
     );
     let expected = expected
         && match (&request.action, &response.outcome) {
+            (Action::Video { operation }, freelane_agent_protocol::Outcome::Video { report }) => {
+                report.validate_for(operation).is_ok()
+            }
             (Action::ExportCatalog, freelane_agent_protocol::Outcome::ExportCatalog { page }) => {
                 page.validate().is_ok()
             }
