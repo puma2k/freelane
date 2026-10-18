@@ -1,6 +1,7 @@
 #pragma once
 // Direct synchronous software-MFT probe: distinguishes packet delivery from file finalization.
 #include <mferror.h>
+#include <thread>
 inline ComPtr<IMFMediaType> direct_type(const GUID& subtype) {
     ComPtr<IMFMediaType> type;check_hresult(MFCreateMediaType(&type));
     check_hresult(type->SetGUID(MF_MT_MAJOR_TYPE,MFMediaType_Video));check_hresult(type->SetGUID(MF_MT_SUBTYPE,subtype));
@@ -50,7 +51,14 @@ inline void direct_encode(Report& r) {
         ComPtr<IMFMediaBuffer> buffer;check_hresult(MFCreateMemoryBuffer(320*180*3/2,&buffer));BYTE* bytes=nullptr;check_hresult(buffer->Lock(&bytes,nullptr,nullptr));
         memset(bytes,82+(i%4)*20,320*180);memset(bytes+320*180,128,320*180/2);check_hresult(buffer->Unlock());check_hresult(buffer->SetCurrentLength(320*180*3/2));
         ComPtr<IMFSample> sample;check_hresult(MFCreateSample(&sample));check_hresult(sample->AddBuffer(buffer.Get()));check_hresult(sample->SetSampleTime(i*333333LL));check_hresult(sample->SetSampleDuration(333333));
-        check_hresult(transform->ProcessInput(input_id,sample.Get(),0));++submitted;drain();
+        check_hresult(transform->ProcessInput(input_id,sample.Get(),0));++submitted;
+        const auto next_input=start+std::chrono::microseconds((i+1)*1000000LL/30);
+        do {
+            drain();
+            if(r.direct_packet_count>=submitted)break;
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }while(std::chrono::steady_clock::now()<next_input);
+        std::this_thread::sleep_until(next_input);drain();
         if(r.direct_packet_count>submitted)throw hresult_error(E_UNEXPECTED);
         r.direct_max_pending=(std::max)(r.direct_max_pending,submitted-r.direct_packet_count);
     }

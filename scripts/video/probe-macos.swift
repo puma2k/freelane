@@ -57,16 +57,22 @@ let callback: VTDecompressionOutputCallback = { context, _, status, _, image, _,
     reader.add(output)
     try require(reader.startReading(), "Cannot read compressed fixture")
     var samples: [CMSampleBuffer] = []
-    var timing: [String] = []
+    var emptyContainerBuffers = 0
     while let sample = output.copyNextSampleBuffer() {
         let bytes = CMSampleBufferGetTotalSampleSize(sample)
         let count = CMSampleBufferGetNumSamples(sample)
         let pts = CMSampleBufferGetPresentationTimeStamp(sample)
-        let flags = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false) as? [[String: Any]]
-        let hidden = flags?.first?[kCMSampleAttachmentKey_DoNotDisplay as String] as? Bool ?? false
-        timing.append("\(pts.value)/\(pts.timescale):\(hidden):\(bytes)")
-        try require(samples.count < 30 && bytes <= 2 * 1024 * 1024,
-                    "Compressed sample bounds: buffers=\(samples.count), bytes=\(bytes), samples=\(count), pts=\(pts.value)/\(pts.timescale), timing=\(timing.joined(separator: ";"))")
+        // AVAssetReader exposes the MP4's leading empty edit as a zero-byte buffer.
+        // It contains no coded picture/reference; accept at most one at timestamp zero.
+        if bytes == 0 && samples.isEmpty && emptyContainerBuffers == 0 && pts.isValid && CMTimeCompare(pts, .zero) == 0 {
+            emptyContainerBuffers += 1
+            continue
+        }
+        try require(samples.count < 30 && bytes > 0 && bytes <= 2 * 1024 * 1024 && count == 1,
+                    "Unexpected compressed picture bounds")
+        if let previous = samples.last {
+            try require(CMTimeCompare(pts, CMSampleBufferGetPresentationTimeStamp(previous)) > 0, "Compressed timestamps did not advance")
+        }
         samples.append(sample)
     }
     try require(reader.status == .completed && samples.count == 30, "Expected30 compressed frames")
@@ -135,7 +141,7 @@ let callback: VTDecompressionOutputCallback = { context, _, status, _, image, _,
     let architecture = "x86_64"
     #endif
     return ["schema": 1, "platform": "macos", "architecture": architecture,
-            "decoded_frames": count, "dimensions_verified": valid,
+            "decoded_frames": count, "leading_empty_container_buffers": emptyContainerBuffers, "dimensions_verified": valid,
             "pixel_variation_verified": varying, "hardware_decoder_used": hardware,
             "hardware_readback_available": hardwareReadback, "realtime_property_applied": realtime,
             "owned_surface_created": true, "surface_rendering": rendering,
