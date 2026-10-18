@@ -63,13 +63,14 @@ let callback: VTDecompressionOutputCallback = { context, _, status, _, image, _,
         let count = CMSampleBufferGetNumSamples(sample)
         let pts = CMSampleBufferGetPresentationTimeStamp(sample)
         // AVAssetReader exposes the MP4's leading empty edit as a zero-byte buffer.
-        // It contains no coded picture/reference; accept at most one at timestamp zero.
-        if bytes == 0 && samples.isEmpty && emptyContainerBuffers == 0 && pts.isValid && CMTimeCompare(pts, .zero) == 0 {
+        // It contains no coded picture/reference; accept at most one leading empty marker.
+        if bytes == 0 && samples.isEmpty && emptyContainerBuffers == 0 {
             emptyContainerBuffers += 1
             continue
         }
-        try require(samples.count < 30 && bytes > 0 && bytes <= 2 * 1024 * 1024 && count == 1,
-                    "Unexpected compressed picture bounds")
+        try require(samples.count < 30 && bytes > 0 && bytes <= 2 * 1024 * 1024 && count == 1 && pts.isValid && pts.timescale > 0,
+                    "Compressed picture: buffers=\(samples.count), bytes=\(bytes), count=\(count), validPTS=\(pts.isValid), pts=\(pts.value)/\(pts.timescale), emptyMarkers=\(emptyContainerBuffers)")
+        if samples.isEmpty { try require(CMTimeCompare(pts, .zero) == 0, "First coded picture must start at zero") }
         if let previous = samples.last {
             try require(CMTimeCompare(pts, CMSampleBufferGetPresentationTimeStamp(previous)) > 0, "Compressed timestamps did not advance")
         }

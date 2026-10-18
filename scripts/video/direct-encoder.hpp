@@ -18,9 +18,11 @@ inline void direct_encode(Report& r) {
     if(count)activation=entries[0]->ActivateObject(__uuidof(IMFTransform),reinterpret_cast<void**>(transform.GetAddressOf()));
     for(UINT32 i=0;i<count;++i)entries[i]->Release();CoTaskMemFree(entries);check_hresult(activation);
     DWORD input_id=0,output_id=0;HRESULT ids=transform->GetStreamIDs(1,&input_id,1,&output_id);if(ids!=E_NOTIMPL)check_hresult(ids);
+    ComPtr<ICodecAPI> api;
+    if(SUCCEEDED(transform.As(&api)))r.direct_worker_applied=codec_uint(api.Get(),CODECAPI_AVEncNumWorkerThreads,1,r.direct_worker_threads);
     auto out=direct_type(MFVideoFormat_H264),in=direct_type(MFVideoFormat_NV12);
     check_hresult(transform->SetOutputType(output_id,out.Get(),0));check_hresult(transform->SetInputType(input_id,in.Get(),0));
-    ComPtr<ICodecAPI> api;if(SUCCEEDED(transform.As(&api))){r.direct_low_latency=codec_bool(api.Get(),CODECAPI_AVLowLatencyMode,true);r.direct_zero_b=codec_bool(api.Get(),CODECAPI_AVEncMPVDefaultBPictureCount,false);}
+    if(api){r.direct_low_latency=codec_bool(api.Get(),CODECAPI_AVLowLatencyMode,true);r.direct_zero_b=codec_bool(api.Get(),CODECAPI_AVEncMPVDefaultBPictureCount,false);}
     check_hresult(transform->ProcessMessage(MFT_MESSAGE_NOTIFY_BEGIN_STREAMING,0));check_hresult(transform->ProcessMessage(MFT_MESSAGE_NOTIFY_START_OF_STREAM,0));
     MFT_OUTPUT_STREAM_INFO info{};check_hresult(transform->GetOutputStreamInfo(output_id,&info));
     if(info.cbSize>2*1024*1024)throw hresult_error(E_INVALIDARG);
