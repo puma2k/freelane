@@ -43,9 +43,10 @@ establish hardware encoding; the reference encoder is software.
 The Mac probe requires exactly 30 nonempty, single-picture H.264 samples with
 increasing presentation timestamps, decodes them with VideoToolbox, and checks
 320×180 dimensions and generated pixel variation. The MP4 reader can expose one
-leading empty edit and one terminal empty end marker; reader completion is still
-required after the terminal marker. These markers contain no coded picture and
-are counted separately. Coded data is never skipped to meet the
+leading empty edit and a bounded tail of empty end markers (at most 64); actual
+reader completion is still required. End markers must have zero bytes, zero
+samples and invalid timestamps, and can occur only after all 30 pictures. They
+contain no coded picture and are counted separately. Coded data is never skipped to meet the
 frame bound. The probe queries actual hardware decoder use and submits the
 compressed pictures to an owned `AVSampleBufferDisplayLayer` window.
 

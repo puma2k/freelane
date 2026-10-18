@@ -70,20 +70,21 @@ let callback: VTDecompressionOutputCallback = { context, _, status, _, image, _,
             continue
         }
         // The reader also emits an end marker with no samples, data or valid time.
-        // Permit exactly one after all pictures; never discard coded picture data.
-        if bytes == 0 && count == 0 && !pts.isValid && samples.count == 30 && trailingEmptyContainerBuffers == 0 {
+        // Drain at most 64 non-picture markers, then require actual reader completion.
+        // Any subsequent coded picture still fails the fixed 30-picture bound.
+        if bytes == 0 && count == 0 && !pts.isValid && samples.count == 30 && trailingEmptyContainerBuffers < 64 {
             trailingEmptyContainerBuffers += 1
-            break
+            continue
         }
         try require(trailingEmptyContainerBuffers == 0 && samples.count < 30 && bytes > 0 && bytes <= 2 * 1024 * 1024 && count == 1 && pts.isValid && pts.timescale > 0,
-                    "Compressed picture: buffers=\(samples.count), bytes=\(bytes), count=\(count), validPTS=\(pts.isValid), pts=\(pts.value)/\(pts.timescale), emptyMarkers=\(emptyContainerBuffers)")
+                    "Compressed picture: buffers=\(samples.count), bytes=\(bytes), count=\(count), validPTS=\(pts.isValid), pts=\(pts.value)/\(pts.timescale), emptyMarkers=\(emptyContainerBuffers), terminalMarkers=\(trailingEmptyContainerBuffers), reader=\(reader.status.rawValue)")
         if samples.isEmpty { try require(CMTimeCompare(pts, .zero) == 0, "First coded picture must start at zero") }
         if let previous = samples.last {
             try require(CMTimeCompare(pts, CMSampleBufferGetPresentationTimeStamp(previous)) > 0, "Compressed timestamps did not advance")
         }
         samples.append(sample)
     }
-    try require(reader.status == .completed && samples.count == 30, "Expected30 compressed frames")
+    try require(reader.status == .completed && samples.count == 30, "Expected30 compressed frames: count=\(samples.count), reader=\(reader.status.rawValue), terminalMarkers=\(trailingEmptyContainerBuffers), readerError=\(reader.error.map { ($0 as NSError).code } ?? 0)")
     guard let format = CMSampleBufferGetFormatDescription(samples[0]) else { throw ProbeFailure(message: "No H.264 format") }
     let dimensions = CMVideoFormatDescriptionGetDimensions(format)
     try require(CMFormatDescriptionGetMediaSubType(format) == kCMVideoCodecType_H264 && dimensions.width == 320 && dimensions.height == 180, "Unexpected codec/dimensions")
