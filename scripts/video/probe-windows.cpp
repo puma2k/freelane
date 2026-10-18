@@ -34,6 +34,7 @@ struct Report {
     const char* d3d_device="none";
     long long encode_elapsed_ms=0, direct_first_packet_us=-1;
     unsigned direct_packet_count=0, direct_max_pending=0, direct_before_drain=0;
+    unsigned raw_pictures=0,raw_configurations=0,raw_idrs=0;
     bool direct_low_latency=false, direct_zero_b=false, direct_worker_applied=false;
     ULONG direct_worker_threads=0;
     HRESULT direct_hr=E_PENDING;
@@ -164,7 +165,7 @@ int wmain(int argc,wchar_t** argv) {
     try{init_apartment(apartment_type::multi_threaded);apartment=true;check_hresult(MFStartup(MF_VERSION));mf=true;
         try{capture(r);}catch(const hresult_error& e){r.capture_hr=e.code().value;}catch(...){r.capture_hr=E_FAIL;}
         try{encode(r,std::filesystem::path(argv[1])/L"fixture.mp4");}catch(const hresult_error& e){r.encoder_hr=e.code().value;}catch(...){r.encoder_hr=E_FAIL;}
-        try{direct_encode(r);}catch(const hresult_error& e){r.direct_hr=e.code().value;}catch(...){r.direct_hr=E_FAIL;}
+        try{direct_encode(r,std::filesystem::path(argv[1]));}catch(const hresult_error& e){r.direct_hr=e.code().value;}catch(...){r.direct_hr=E_FAIL;}
     }catch(...){r.encoder_hr=E_FAIL;}
     if(mf)MFShutdown();if(apartment)uninit_apartment();
 #ifdef _M_ARM64
@@ -173,6 +174,6 @@ int wmain(int argc,wchar_t** argv) {
     const char* arch="x86_64";
 #endif
     std::ofstream out(std::filesystem::path(argv[1])/L"report.json");
-    out<<std::boolalpha<<"{\"schema\":1,\"platform\":\"windows\",\"architecture\":\""<<arch<<"\",\"capture_supported\":"<<r.capture_supported<<",\"capture_frames\":"<<r.capture_frames<<",\"owned_pixels_verified\":"<<r.owned_pixels_verified<<",\"software_h264_count\":"<<r.software_h264_count<<",\"hardware_h264_count\":"<<r.hardware_h264_count<<",\"encoded_frames\":"<<r.encoded_frames<<",\"low_latency_applied\":"<<r.low_latency_applied<<",\"zero_b_frames_applied\":"<<r.zero_b_frames_applied<<",\"raw_packet_latency_measured\":"<<(SUCCEEDED(r.direct_hr)&&r.direct_packet_count==30)<<",\"capture_hresult\":"<<static_cast<long>(r.capture_hr)<<",\"encoder_hresult\":"<<static_cast<long>(r.encoder_hr)<<",\"capture_validation_cpu_readback\":true,\"d3d_device_kind\":\""<<r.d3d_device<<"\",\"reference_encoder_hardware_requested\":false,\"encode_elapsed_ms\":"<<r.encode_elapsed_ms<<",\"direct_packet_count\":"<<r.direct_packet_count<<",\"direct_max_pending_frames\":"<<r.direct_max_pending<<",\"direct_packets_before_drain\":"<<r.direct_before_drain<<",\"direct_first_packet_us\":"<<r.direct_first_packet_us<<",\"direct_input_cadence_fps\":30,\"direct_low_latency_applied\":"<<r.direct_low_latency<<",\"direct_zero_b_frames_applied\":"<<r.direct_zero_b<<",\"direct_hresult\":"<<static_cast<long>(r.direct_hr)<<",\"direct_worker_threads\":"<<r.direct_worker_threads<<",\"direct_worker_threads_applied\":"<<r.direct_worker_applied<<"}\n";
+    out<<std::boolalpha<<"{\"schema\":1,\"platform\":\"windows\",\"architecture\":\""<<arch<<"\",\"capture_supported\":"<<r.capture_supported<<",\"capture_frames\":"<<r.capture_frames<<",\"owned_pixels_verified\":"<<r.owned_pixels_verified<<",\"software_h264_count\":"<<r.software_h264_count<<",\"hardware_h264_count\":"<<r.hardware_h264_count<<",\"encoded_frames\":"<<r.encoded_frames<<",\"low_latency_applied\":"<<r.low_latency_applied<<",\"zero_b_frames_applied\":"<<r.zero_b_frames_applied<<",\"raw_packet_latency_measured\":"<<(SUCCEEDED(r.direct_hr)&&r.direct_packet_count==30)<<",\"capture_hresult\":"<<static_cast<long>(r.capture_hr)<<",\"encoder_hresult\":"<<static_cast<long>(r.encoder_hr)<<",\"capture_validation_cpu_readback\":true,\"d3d_device_kind\":\""<<r.d3d_device<<"\",\"reference_encoder_hardware_requested\":false,\"encode_elapsed_ms\":"<<r.encode_elapsed_ms<<",\"direct_packet_count\":"<<r.direct_packet_count<<",\"direct_max_pending_frames\":"<<r.direct_max_pending<<",\"direct_packets_before_drain\":"<<r.direct_before_drain<<",\"direct_first_packet_us\":"<<r.direct_first_packet_us<<",\"direct_input_cadence_fps\":30,\"direct_low_latency_applied\":"<<r.direct_low_latency<<",\"direct_zero_b_frames_applied\":"<<r.direct_zero_b<<",\"direct_hresult\":"<<static_cast<long>(r.direct_hr)<<",\"direct_worker_threads\":"<<r.direct_worker_threads<<",\"direct_worker_threads_applied\":"<<r.direct_worker_applied<<",\"raw_stream_pictures\":"<<r.raw_pictures<<",\"raw_stream_configurations\":"<<r.raw_configurations<<",\"raw_stream_idrs\":"<<r.raw_idrs<<"}\n";
     return out?0:3;
 }

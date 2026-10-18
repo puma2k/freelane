@@ -3,6 +3,7 @@
 #include <mferror.h>
 #include <thread>
 #include "pending-frames.hpp"
+#include "annexb.hpp"
 inline ComPtr<IMFMediaType> direct_type(const GUID& subtype) {
     ComPtr<IMFMediaType> type;check_hresult(MFCreateMediaType(&type));
     check_hresult(type->SetGUID(MF_MT_MAJOR_TYPE,MFMediaType_Video));check_hresult(type->SetGUID(MF_MT_SUBTYPE,subtype));
@@ -12,7 +13,10 @@ inline ComPtr<IMFMediaType> direct_type(const GUID& subtype) {
     if(subtype==MFVideoFormat_NV12){check_hresult(type->SetUINT32(MF_MT_FIXED_SIZE_SAMPLES,TRUE));check_hresult(type->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT,TRUE));check_hresult(type->SetUINT32(MF_MT_SAMPLE_SIZE,320*180*3/2));check_hresult(type->SetUINT32(MF_MT_DEFAULT_STRIDE,320));}
     return type;
 }
-inline void direct_encode(Report& r) {
+inline void direct_encode(Report& r,const std::filesystem::path& directory) {
+    std::ofstream raw_output(directory/L"packets.flv",std::ios::binary);
+    freelane_video::require(static_cast<bool>(raw_output),"Cannot create packet fixture");
+    freelane_video::PacketConverter converter;freelane_video::PacketWriter packet_writer(raw_output);
     MFT_REGISTER_TYPE_INFO output_type{MFMediaType_Video,MFVideoFormat_H264};IMFActivate** entries=nullptr;UINT32 count=0;
     check_hresult(MFTEnumEx(MFT_CATEGORY_VIDEO_ENCODER,MFT_ENUM_FLAG_SYNCMFT|MFT_ENUM_FLAG_SORTANDFILTER,nullptr,&output_type,&entries,&count));
     ComPtr<IMFTransform> transform;HRESULT activation=MF_E_TOPO_CODEC_NOT_FOUND;
@@ -47,6 +51,13 @@ inline void direct_encode(Report& r) {
             if(length==0||length>2*1024*1024||pts<=last||r.direct_packet_count>=30)throw hresult_error(E_INVALIDARG);
             last=pts;
             if(r.direct_packet_count++==0)r.direct_first_packet_us=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-start).count();
+            ComPtr<IMFMediaBuffer> contiguous;check_hresult(sample->ConvertToContiguousBuffer(&contiguous));
+            BYTE* data=nullptr;DWORD size=0;check_hresult(contiguous->Lock(&data,nullptr,&size));
+            freelane_video::Bytes bytes;
+            try {if(!data||size!=length)throw hresult_error(E_INVALIDARG);bytes.assign(data,data+size);}catch(...){contiguous->Unlock();throw;}
+            check_hresult(contiguous->Unlock());
+            packet_writer.write(converter.convert(bytes),static_cast<uint64_t>(pts/10));
+            r.raw_pictures=packet_writer.pictures;r.raw_configurations=packet_writer.configurations;r.raw_idrs=packet_writer.idrs;
         }
         throw hresult_error(E_UNEXPECTED);
     };
@@ -69,5 +80,6 @@ inline void direct_encode(Report& r) {
     r.direct_before_drain=r.direct_packet_count;
     check_hresult(transform->ProcessMessage(MFT_MESSAGE_NOTIFY_END_OF_STREAM,input_id));check_hresult(transform->ProcessMessage(MFT_MESSAGE_COMMAND_DRAIN,0));drain();
     check_hresult(transform->ProcessMessage(MFT_MESSAGE_NOTIFY_END_STREAMING,0));
-    r.direct_hr=r.direct_packet_count==30?S_OK:E_FAIL;
+    raw_output.flush();freelane_video::require(static_cast<bool>(raw_output),"Cannot flush packet fixture");
+    r.direct_hr=r.direct_packet_count==30&&r.raw_pictures==30&&r.raw_configurations==1?S_OK:E_FAIL;
 }
