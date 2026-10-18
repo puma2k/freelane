@@ -14,6 +14,7 @@ pub mod qmp;
 pub mod resource_presets;
 mod socket_wait;
 pub mod telemetry;
+pub mod video;
 
 use serde::{Deserialize, Serialize};
 use std::{fmt, path::PathBuf};
