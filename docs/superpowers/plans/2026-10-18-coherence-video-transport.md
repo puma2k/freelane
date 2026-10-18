@@ -15,7 +15,7 @@
 - This implements Gate B foundations, not native live capture/encoder/viewer integration, v14 start/stop negotiation or the cross-process viewer IPC frontend. Do not advertise a video capability yet.
 - One reader lease per VM, separate from the agent-client lease. Broker shutdown never closes a guest app or stops/restarts a VM.
 - 1920×1080 maximum; even positive dimensions. H.264 baseline only. Codec config64KiB; access unit2MiB. Header lengths checked before allocation.
-- Session nonce16 nonzero bytes, nonzero stream/generation, strict sequence/timestamp checks. Stream data cannot change the authorized target/binding.
+- Session nonce16 bytes, not all zero, nonzero stream/generation, strict sequence/timestamp checks. Stream data cannot change the authorized target/binding.
 - At most2 queued access units. Overflow or sequence gap clears dependencies, requests a keyframe and accepts only a verified IDR before resuming. Decode/presentation integration remains future work.
 - Idle reader sleeps in poll; partial record gets one absolute2second budget. Shutdown wakes poll without waiting for source traffic.
 - Port provisioning affects new VM starts only; no running VM is force-restarted. Existing control socket is unchanged.
@@ -47,26 +47,30 @@ Files: `crates/agent-protocol/src/video/{mod.rs,h264.rs,receiver.rs}`, integrati
 Interfaces: `Binding { nonce:[u8;16], stream:u64, generation:u64 }`, `Record { binding, kind, width, height, sequence, pts_us, payload }`, `Kind::{Configuration,AccessUnit{idr:bool}}`; `read_record(&mut impl Read)->io::Result<Option<Record>>`, `write_record(&mut impl Write,&Record)`.
 `Receiver::new(Binding)`, `accept(Record)`, `pop()->Option<Record>`, `configuration()->Option<&Record>`, `take_keyframe_request()->bool`, `clear()`; no target adoption from bytes.
 
-- [ ] Write roundtrip/short-read/short-write tests; malformed/truncated/unsupported/oversize headers fail, lengths rejected before payload reads. Run missing-module/API RED.
-- [ ] Implement framing and bounded avcC/AVCC validation; test fabricated IDR flag and malformed NAL/config lengths.
-- [ ] Write recovery tests then implement receiver: first config+IDR, queue overflow clears2dependents, ignores P frames until IDR; sequence gap similarly recovers, timestamp regression/replayed sequence/wrong nonce/generation/config replacement fail without delivering a frame; clear prevents old session reuse.
-- [ ] Run protocol suite, commit focused implementation.
+- [x] Write roundtrip/short-read/short-write tests; malformed/truncated/unsupported/oversize headers fail, lengths rejected before payload reads. Run missing-module/API RED.
+- [x] Implement framing and bounded avcC/AVCC validation; test fabricated IDR flag and malformed NAL/config lengths.
+- [x] Write recovery tests then implement receiver: first config+IDR, queue overflow clears2dependents, ignores P frames until IDR; sequence gap similarly recovers, timestamp regression/replayed sequence/wrong nonce/generation/config replacement fail without delivering a frame; clear prevents old session reuse.
+- [x] Run protocol suite, commit focused implementation.
 
 ### Task2: Owned exclusive VM reader
 
 Files: `src/video/{mod.rs,reader.rs}`, root lib export, `tests/video_broker.rs`.
 Interface: `VideoBroker::connect(config:&Path,target:WindowTarget,binding:Binding)->Result<Self>` requires a previously negotiated/authorized target; validates complete identity. It verifies private owner runtime and a held supervisor lock, leases `video-client.lock`, connects only `video.sock`, starts one read worker. `pop`, `configuration`, `take_keyframe_request`, `ended`, `target`. Drop cancels and joins, no reconnect/replay or source/socket unlink.
 
-- [ ] Write owned Unix endpoints tests for exclusive reader, retained target, valid output, malformed/disconnected source clears pending frames, stopped VM and unsafe/symlinked locks rejected; observe RED.
-- [ ] Implement private regular-file lease checks and VM-running lock check; separate lock from control. Worker uses cancellable poll and absolute2second partial-record deadline; idle no periodic wakeup.
-- [ ] Test cancellation when idle and midway through header/body, slow trickle deadline, and a saturated video source alongside a real owned agent request; control must complete independently. No request/keyframe command is automatically sent before negotiated v14 integration exists.
-- [ ] Run focused suite and commit.
+- [x] Write owned Unix endpoints tests for exclusive reader, retained target, valid output, malformed/disconnected source clears pending frames, stopped VM and unsafe/symlinked locks rejected; observe RED.
+- [x] Implement private regular-file lease checks and VM-running lock check; separate lock from control. Worker uses cancellable poll and absolute2second partial-record deadline; idle no periodic wakeup.
+- [x] Test cancellation when idle and midway through header/body, slow trickle deadline, and a saturated video source alongside a real owned agent request; control must complete independently. No request/keyframe command is automatically sent before negotiated v14 integration exists.
+- [x] Run focused suite and commit.
 
 ### Task3: QEMU port lifecycle and evidence
 
 Files: `src/qemu.rs`, `tests/qemu_plan.rs`, `tests/qemu_smoke.rs`, transport docs.
 
-- [ ] Test agent-enabled new starts provision `video.sock` / `org.freelane.video.0` separately, retain existing agent port, one virtio-serial controller and no TCP listener; agent-disabled starts omit both. Observe RED then implement.
-- [ ] Add video socket removal only inside existing owned supervisor cleanup lock. Real QEMU smoke queries separate chardevs and verifies cleanup; run with installed QEMU/firmware.
-- [ ] Run workspace fmt, strict clippy, workspace tests, MCP and portable video probes. One fresh whole-batch review, fix Important/Critical once with regressions; no re-review.
-- [ ] Record actual gates and limits, commit/push using existing authorization. No product release or native-video UI claim from these foundations.
+- [x] Test agent-enabled new starts provision `video.sock` / `org.freelane.video.0` separately, retain existing agent port, one virtio-serial controller and no TCP listener; agent-disabled starts omit both. Observe RED then implement.
+- [x] Add video socket removal only inside existing owned supervisor cleanup lock. Real QEMU smoke queries separate chardevs and verifies cleanup; run with installed QEMU/firmware.
+- [x] Run workspace fmt, strict clippy, workspace tests, MCP and portable video probes. One fresh whole-batch review, fix Important/Critical once with regressions; no re-review.
+- [x] Record actual gates and limits, commit/push using existing authorization. No product release or native-video UI claim from these foundations.
+
+## Outcome
+
+Completed these Gate B foundations at `3520e42`; [evidence](../../evidence/coherence-video-transport.json). Workspace237passed/9ignored, native ARM QEMU/UEFI1passed underumask0022, MCP14 and portablevideo8passed; strict clippy/fmt green. One fresh review found legacy0644supervisor-lock incompatibility; regression RED→GREEN and new private lock creation fixed it. No deferred findings. Full Gate B and continuous-video product/performance acceptance remain open as scoped above.

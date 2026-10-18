@@ -1,0 +1,39 @@
+{
+  "source_commit": "3520e429957286b55fbdaaeb7dc5e74669ab3a04",
+  "scope": "Gate B foundations only; video capability is not advertised",
+  "tests": {
+    "workspace": {
+      "passed": 237,
+      "ignored": 9,
+      "failed": 0
+    },
+    "protocol_focused": 6,
+    "broker_focused": 8,
+    "qemu_plan": 19,
+    "mcp": 14,
+    "portable_video_probes": 8,
+    "strict_clippy": "passed",
+    "format": "passed",
+    "real_qemu_uefi": {
+      "passed": 1,
+      "umask": "0022",
+      "elapsed_seconds": 13.83
+    }
+  },
+  "verified": [
+    "64-byte framing and preallocation length rejection",
+    "H264 structural IDR validation and GOP-aware queue recovery",
+    "Exclusive owned target-bound reader and cancel/absolute deadline",
+    "Existing supervisor0644 compatibility inside0700runtime",
+    "Child descriptor isolation",
+    "Actual RPC control during continuous owned video input",
+    "Actual ARM QEMU dual chardevs, reader connect, control, cleanup and restart"
+  ],
+  "not_implemented": [
+    "v14 native stream start/stop/keyframe negotiation",
+    "Cross-process native viewer IPC frontend",
+    "Native Windows capture-to-encoder streaming integration",
+    "Native Mac live viewer integration",
+    "Sustained720p30 or input-to-visible/zero-copy acceptance"
+  ]
+}

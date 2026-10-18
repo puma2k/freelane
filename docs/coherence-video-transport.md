@@ -64,3 +64,10 @@ These establish portable transport behavior and QEMU provisioning. They do not
 establish the complete broker/frontend handshake, cross-process viewer IPC,
 Windows-to-Mac live pictures, sustained720p30/60, zero-copy rendering or measured
 input-to-visible latency.
+
+Recorded validation: workspace237passed/9ignored, broker8tests, framing/receiver6tests,
+QEMU arguments19tests, MCP14tests, portable probes8tests, strict clippy/fmt green.
+The actual ARM QEMU/UEFI smoke passed underumask0022; the compatibility regression
+also accepts an existing0644supervisor lock inside the private runtime while
+keeping the new video lease private. See the
+[machine-readable record](evidence/coherence-video-transport.json).
