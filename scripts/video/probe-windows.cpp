@@ -6,6 +6,8 @@
 #include <mfidl.h>
 #include <mfreadwrite.h>
 #include <codecapi.h>
+#include <icodecapi.h>
+#include <mftransform.h>
 #include <wrl/client.h>
 #include <windows.graphics.capture.interop.h>
 #include <windows.graphics.directx.direct3d11.interop.h>
