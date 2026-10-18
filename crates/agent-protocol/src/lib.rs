@@ -5,6 +5,7 @@ pub mod export;
 pub mod export_catalog;
 pub mod transfer_folders;
 pub mod video;
+pub mod video_control;
 pub mod window_input;
 use serde::{Deserialize, Serialize};
 use std::io::{self, BufRead, Read, Write};
@@ -31,6 +32,9 @@ pub struct Request {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "type", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Action {
+    Video {
+        operation: video_control::Operation,
+    },
     TransferFolders {
         reconnect: bool,
     },
@@ -315,6 +319,9 @@ pub struct Response {
 #[derive(Debug, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(tag = "status", rename_all = "snake_case", deny_unknown_fields)]
 pub enum Outcome {
+    Video {
+        report: video_control::Reply,
+    },
     TransferFolders {
         report: transfer_folders::Report,
     },
@@ -403,6 +410,7 @@ impl Request {
             export::VERSION,
             export_catalog::VERSION,
             transfer_folders::VERSION,
+            video_control::VERSION,
         ]
         .contains(&self.version)
         {
@@ -410,6 +418,15 @@ impl Request {
         }
         if self.id == 0 {
             return Err(invalid("Request ID must not be zero"));
+        }
+        if self.version == video_control::VERSION {
+            return match &self.action {
+                Action::Video { operation } => operation.validate(),
+                _ => Err(invalid("Protocol v14 only supports video control")),
+            };
+        }
+        if matches!(self.action, Action::Video { .. }) {
+            return Err(invalid("Video control requires protocol v14"));
         }
         if self.version == transfer_folders::VERSION {
             return if matches!(self.action, Action::TransferFolders { .. }) {

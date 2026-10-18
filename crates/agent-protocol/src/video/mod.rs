@@ -6,7 +6,8 @@ use std::io::{self, Read, Write};
 pub const HEADER_SIZE: usize = 64;
 pub const MAX_ACCESS_UNIT: usize = 2 * 1024 * 1024;
 pub const MAX_CONFIGURATION: usize = 64 * 1024;
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq, serde::Serialize, serde::Deserialize)]
+#[serde(deny_unknown_fields)]
 pub struct Binding {
     pub nonce: [u8; 16],
     pub stream: u64,
