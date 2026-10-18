@@ -246,16 +246,32 @@ fn saturated_video_does_not_take_the_control_channel_lease() {
 #[test]
 fn broker_descriptor_is_not_inherited_by_unrelated_child() {
     use std::io::Read;
+    use std::os::fd::AsRawFd;
     let f = Fixture::new();
     let (b, mut peer) = f.connect();
+    peer.set_nonblocking(true).unwrap();
     let mut child = std::process::Command::new("sleep")
         .arg("3")
         .spawn()
         .unwrap();
     drop(b);
-    peer.set_read_timeout(Some(Duration::from_millis(300)))
-        .unwrap();
-    let result = peer.read(&mut [0]);
+    // Darwin rejects SO_RCVTIMEO in this disconnected-socket lifecycle.
+    // Poll for EOF while the unrelated child is still alive; never wait for
+    // its normal exit, which could hide an inherited descriptor.
+    let mut descriptor = libc::pollfd {
+        fd: peer.as_raw_fd(),
+        events: libc::POLLIN,
+        revents: 0,
+    };
+    let ready = unsafe { libc::poll(&mut descriptor, 1, 300) };
+    let result = if ready > 0 {
+        peer.read(&mut [0])
+    } else {
+        Err(std::io::Error::new(
+            std::io::ErrorKind::TimedOut,
+            "Video peer did not reach EOF before the child exited",
+        ))
+    };
     if let Err(error) = &result {
         // Public enum/numeric diagnostics only: no paths, payloads or raw logs.
         eprintln!(
@@ -266,6 +282,7 @@ fn broker_descriptor_is_not_inherited_by_unrelated_child() {
     }
     let _ = child.kill();
     let _ = child.wait();
+    assert!(ready > 0, "video EOF was not ready while child was alive");
     assert_eq!(result.unwrap(), 0, "child retained the video descriptor");
 }
 
