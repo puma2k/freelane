@@ -17,6 +17,13 @@ def failed_test_names(text, allowed):
     return sorted(names)
 
 
+def broker_panic_lines(text):
+    # Only numeric locations in this public, fixed source file. Never raw logs.
+    return sorted({int(n) for n in re.findall(
+        r"^thread '[A-Za-z0-9_:]+'(?: \([0-9]+\))? panicked at tests/video_broker\.rs:([0-9]{1,5}):[0-9]+:",
+        text, re.MULTILINE)})
+
+
 def main():
     commands = {
         "portable": ["cargo", "test", "--locked", "--workspace", "--no-fail-fast"],
@@ -32,16 +39,20 @@ def main():
                                stderr=subprocess.STDOUT)
     failed = set()
     error_codes = set()
+    broker_lines = set()
     # Preserve the existing command's console output; new annotations contain names only.
     for line in iter(process.stdout.readline, b""):
         sys.stdout.buffer.write(line)
         sys.stdout.buffer.flush()
         text = line.decode(errors="replace")
         failed.update(failed_test_names(text, allowed))
+        broker_lines.update(broker_panic_lines(text))
         error_codes.update(int(n) for n in re.findall(r"\(os error ([0-9]{1,3})\)", text) if 0 < int(n) <= 133)
     status = process.wait()
     process.stdout.close()
     if status:
+        for line in sorted(broker_lines):
+            print("::error title=Video broker source location::tests/video_broker.rs line " + str(line))
         if error_codes:
             print("::error title=OS error status::Codes observed: " + ", ".join(map(str, sorted(error_codes))))
         for name in sorted(failed):
