@@ -4,6 +4,7 @@ pub mod clipboard_sync;
 pub mod export;
 pub mod export_catalog;
 pub mod transfer_folders;
+pub mod video;
 pub mod window_input;
 use serde::{Deserialize, Serialize};
 use std::io::{self, BufRead, Read, Write};
