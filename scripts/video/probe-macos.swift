@@ -57,12 +57,16 @@ let callback: VTDecompressionOutputCallback = { context, _, status, _, image, _,
     reader.add(output)
     try require(reader.startReading(), "Cannot read compressed fixture")
     var samples: [CMSampleBuffer] = []
+    var timing: [String] = []
     while let sample = output.copyNextSampleBuffer() {
         let bytes = CMSampleBufferGetTotalSampleSize(sample)
         let count = CMSampleBufferGetNumSamples(sample)
         let pts = CMSampleBufferGetPresentationTimeStamp(sample)
+        let flags = CMSampleBufferGetSampleAttachmentsArray(sample, createIfNecessary: false) as? [[String: Any]]
+        let hidden = flags?.first?[kCMSampleAttachmentKey_DoNotDisplay as String] as? Bool ?? false
+        timing.append("\(pts.value)/\(pts.timescale):\(hidden):\(bytes)")
         try require(samples.count < 30 && bytes <= 2 * 1024 * 1024,
-                    "Compressed sample bounds: buffers=\(samples.count), bytes=\(bytes), samples=\(count), pts=\(pts.value)/\(pts.timescale)")
+                    "Compressed sample bounds: buffers=\(samples.count), bytes=\(bytes), samples=\(count), pts=\(pts.value)/\(pts.timescale), timing=\(timing.joined(separator: ";"))")
         samples.append(sample)
     }
     try require(reader.status == .completed && samples.count == 30, "Expected30 compressed frames")
@@ -141,16 +145,15 @@ let callback: VTDecompressionOutputCallback = { context, _, status, _, image, _,
 }
 @main struct ProbeMain {
     @MainActor static func main() {
-do {
-    try require(CommandLine.arguments.count == 2, "Usage: probe-macos GENERATED_FIXTURE_MP4")
-    let result = try probe(URL(fileURLWithPath: CommandLine.arguments[1]))
-    let data = try JSONSerialization.data(withJSONObject: result, options: [.sortedKeys])
-    FileHandle.standardOutput.write(data); FileHandle.standardOutput.write(Data([10]))
-} catch {
-    let message = (error as? ProbeFailure)?.message ?? "Native video probe failed"
-    FileHandle.standardError.write(Data((message + "\n").utf8))
-    exit(1)
-}
-
+        do {
+            try require(CommandLine.arguments.count == 2, "Usage: probe-macos GENERATED_FIXTURE_MP4")
+            let result = try probe(URL(fileURLWithPath: CommandLine.arguments[1]))
+            let data = try JSONSerialization.data(withJSONObject: result, options: [.sortedKeys])
+            FileHandle.standardOutput.write(data); FileHandle.standardOutput.write(Data([10]))
+        } catch {
+            let message = (error as? ProbeFailure)?.message ?? "Native video probe failed"
+            FileHandle.standardError.write(Data((message + "\n").utf8))
+            exit(1)
+        }
     }
 }

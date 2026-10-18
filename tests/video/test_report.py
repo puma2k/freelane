@@ -30,6 +30,8 @@ class ReportTests(unittest.TestCase):
         w,m=fixtures();w['raw_packet_latency_measured']=True;m['copy_path_measured']=True;m['onscreen_pixels_verified']=True
         self.assertFalse(report.assess(w,m)['gate_a_complete'])
         w['direct_packet_count']=30;w['direct_max_pending_frames']=2
+        self.assertFalse(report.assess(w,m)['gate_a_complete'])
+        w['direct_low_latency_applied']=True;w['direct_zero_b_frames_applied']=True
         self.assertTrue(report.assess(w,m)['gate_a_complete'])
         w['direct_max_pending_frames']=3
         self.assertFalse(report.assess(w,m)['gate_a_complete'])
