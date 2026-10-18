@@ -66,3 +66,13 @@ live resizing, reconnect/keyframe recovery, VM transport, audio synchronization,
 or independent application-window video. Those require subsequent integration
 and sustained measurements described in the
 [approved design](../../docs/superpowers/specs/2026-10-18-coherence-video-design.md).
+
+## Direct packets
+
+The workflow also exports the actual direct Media Foundation packets into the
+bounded `packets.flv` fixture (the experimental FLV1 protocol, not the Adobe FLV
+container). The Rust `video_check` example validates the Windows ARM file, then
+the Mac probe creates CoreMedia compressed samples directly from its avcC/AVCC
+records. Hardware readback/decoding is assessed separately for this raw path.
+See [the direct evidence](../../docs/coherence-direct-packets.md). This is finite
+fixture interoperability; it does not enable live video in the product.

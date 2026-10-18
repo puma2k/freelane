@@ -24,15 +24,25 @@
 Files: `scripts/video/annexb.hpp`, portable C++ regression in `tests/video/test_annexb.py`, `direct-encoder.hpp`, `probe-windows.cpp`.
 Interface: portable `PacketConverter::convert(vector<uint8_t>) -> Converted { configuration, access_unit, idr }` (configuration emitted once; same parameter sets allowed again, changed sets fail); direct output writer serializes the approved64byteFLV1header and config/AUs, counts30pictures and verifies file<=4MiB.
 
-- [ ] Write portable tests for3/4byte start codes, SPS/PPS→avcC, stripping parameter sets from AVCC picture, IDR/dependent slices, missing/changed params, malformed/oversize/empty NALs; observe missing-header RED.
-- [ ] Implement converter/writer, wire actual IMFTransform output bytes and actual PTS to fixture. Report raw packet/config/IDR counts without claiming live delivery.
-- [ ] Native Windows ARM/x64 jobs must emit exactly30rawpictures/config1 and fixture; capture actual packet conversion diagnostics if unsupported.
+- [x] Write portable tests for3/4byte start codes, SPS/PPS→avcC, stripping parameter sets from AVCC picture, IDR/dependent slices, missing/changed params, malformed/oversize/empty NALs; observe missing-header RED.
+- [x] Implement converter/writer, wire actual IMFTransform output bytes and actual PTS to fixture. Report raw packet/config/IDR counts without claiming live delivery.
+- [x] Native Windows ARM/x64 jobs must emit exactly30rawpictures/config1 and fixture; capture actual packet conversion diagnostics if unsupported.
 
 ### Task2: Rust/native Mac direct packet decode
 
 Files: `crates/agent-protocol/examples/video_check.rs`, `scripts/video/packet-input.swift`, `probe-macos.swift`, workflow.
 Interfaces: Rust example validates exact finite fixture via read_record+Receiver and pops each picture immediately, outputs31records/30frames. Swift raw loader accepts the same file, bounded4MiB/31records, creates CMVideoFormatDescription from SPS/PPS and CMSampleBuffers from AVCC bytes at declared timestamps; no MP4 demux.
 
-- [ ] Add native harness requiring Rust fixture validation and Mac raw decode report before implementations (expected missing example/source RED).
-- [ ] Implement Rust validator and native sample construction, keep MP4 path independent; compile/run native SDK, require30pictures+pixel checks and separate source label.
-- [ ] Run portable probes/protocol/workspace checks as affected, one fresh whole-batch review; Important/Critical regression fix once, no re-review. Record actual native results, commit/push. No DMG release or live-video product claim.
+- [x] Add native harness requiring Rust fixture validation and Mac raw decode report before implementations (expected missing example/source RED).
+- [x] Implement Rust validator and native sample construction, keep MP4 path independent; compile/run native SDK, require30pictures+pixel checks and separate source label.
+- [x] Run portable probes/protocol/workspace checks as affected, one fresh whole-batch review; Important/Critical regression fix once, no re-review. Record actual native results, commit/push. No DMG release or live-video product claim.
+
+## Outcome
+
+Native39112796846/source6eb5c63 GREEN: actual Windows ARM/x64 raw30/config1/IDR1;
+Rust validated actual ARM file; Mac raw30picture decode/actualHWreadback/rendering
+true. MP4 reference also passes. Portable10tests, workspace237passed/9ignored,
+strict clippy/fmt green. Fresh review Important directhardware gating fixed
+RED→GREEN; two minor test-harness improvements deferred, recorded in
+[the evidence](../../coherence-direct-packets.md). No product live-video or
+performance acceptance is claimed.
