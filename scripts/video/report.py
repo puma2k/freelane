@@ -15,6 +15,9 @@ def validate(value):
     counts=('capture_frames','software_h264_count','hardware_h264_count','encoded_frames') if platform=='windows' else ('decoded_frames',)
     for name in bools:
         if type(value.get(name)) is not bool:raise ValueError('Missing or invalid boolean: '+name)
+    if platform=='windows':
+        for name in ('direct_packet_count','direct_max_pending_frames'):
+            if name in value and (type(value[name]) is not int or not 0<=value[name]<=10000):raise ValueError('Invalid packet measurement: '+name)
     for name in counts:
         if type(value.get(name)) is not int or not 0<=value[name]<=10000:raise ValueError('Missing or invalid count: '+name)
     return value
@@ -35,7 +38,7 @@ def assess(windows:dict,mac:dict):
        'mac_hardware_decode':m['architecture']=='arm64' and m['hardware_decoder_used'],
        'native_surface_submission':m['owned_surface_created'] and m['surface_rendering']}
     r['candidate_backend']=all(r.values())
-    r['gate_a_complete']=r['candidate_backend'] and w['raw_packet_latency_measured'] and m['copy_path_measured'] and m['onscreen_pixels_verified']
+    r['gate_a_complete']=r['candidate_backend'] and w['raw_packet_latency_measured'] and w.get('direct_packet_count',0)==30 and 0<=w.get('direct_max_pending_frames',10000)<=2 and m['copy_path_measured'] and m['onscreen_pixels_verified']
     r['continuous_video_accepted']=False
     r['performance_accepted']=False
     return r

@@ -26,6 +26,13 @@ class ReportTests(unittest.TestCase):
         self.assertFalse(report.assess(w,m)['candidate_backend'])
         w,m=fixtures();m['hardware_decoder_used']=False
         self.assertFalse(report.assess(w,m)['mac_hardware_decode'])
+    def test_raw_packet_flag_alone_cannot_accept_the_streaming_budget(self):
+        w,m=fixtures();w['raw_packet_latency_measured']=True;m['copy_path_measured']=True;m['onscreen_pixels_verified']=True
+        self.assertFalse(report.assess(w,m)['gate_a_complete'])
+        w['direct_packet_count']=30;w['direct_max_pending_frames']=2
+        self.assertTrue(report.assess(w,m)['gate_a_complete'])
+        w['direct_max_pending_frames']=3
+        self.assertFalse(report.assess(w,m)['gate_a_complete'])
     def test_wrong_types_and_counts_fail_closed(self):
         for key,value in [('owned_pixels_verified',1),('encoded_frames',True),('schema',2),('encoded_frames',-1),('architecture','unknown')]:
             w,m=fixtures();w[key]=value

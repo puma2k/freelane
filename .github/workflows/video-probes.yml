@@ -45,6 +45,7 @@ jobs:
           $r = Get-Content "$folder/report.json" -Raw | ConvertFrom-Json
           Write-Output "::notice title=Windows video capability report::$($r | ConvertTo-Json -Compress)"
           if ($r.architecture -ne $expected -or $r.encoded_frames -ne 30) { throw "Reference encoding failed; HRESULT $($r.encoder_hresult)" }
+          if ($r.direct_packet_count -ne 30) { throw "Direct streaming probe missing/failed; HRESULT $($r.direct_hresult)" }
           $before = (Get-FileHash "$folder/fixture.mp4" -Algorithm SHA256).Hash
           & $exe $folder
           if ($LASTEXITCODE -ne 2 -or (Get-FileHash "$folder/fixture.mp4" -Algorithm SHA256).Hash -ne $before) { throw 'Existing destination was not preserved' }
