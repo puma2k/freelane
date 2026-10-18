@@ -32,28 +32,43 @@
 Files: `scripts/video/report.py`, `tests/video/test_report.py`.
 Interface: `assess(windows: dict, mac: dict) -> dict`; `load(path: Path) -> dict` reads at most64KiB UTF-8 JSON and rejects wrong schema/platform/type/counts. Output contains individual boolean gates, a candidate-backend flag and explicitly false end-to-end/performance acceptance.
 
-- [ ] Write tests for valid ARM candidate, x64 exclusion, no frames, false readbacks, unsupported hardware decode, malformed/oversized reports and surface-only limitation.
-- [ ] Run `python3 -m unittest discover -s tests/video -v`; observe missing-module/API RED.
-- [ ] Implement exact validation/assessment; require all tests pass. Do not infer runtime success from a build.
+- [x] Write tests for valid ARM candidate, x64 exclusion, no frames, false readbacks, unsupported hardware decode, malformed/oversized reports and surface-only limitation.
+- [x] Run `python3 -m unittest discover -s tests/video -v`; observe missing-module/API RED.
+- [x] Implement exact validation/assessment; require all tests pass. Do not infer runtime success from a build.
 
 ### Task2: Windows capture and encode probe
 
 Files: `scripts/video/probe-windows.cpp`, `.github/workflows/video-probes.yml` Windows job.
 Interface: `probe-windows.exe NEW_DIRECTORY` writes `report.json` and generated `fixture.mp4`; refuses an existing path. Report schema1 includes platform/windows, compile architecture, WGC support/item/frame/owned-pixel proof, D3D device kind, software/hardware H.264 transform counts, encoded-frame count, codec-property readbacks, elapsed milliseconds and bounded HRESULT diagnostics.
 
-- [ ] Add native harness/workflow invoking probe and existing-destination refusal. Compile missing source first for native RED, then implement the probe.
-- [ ] Initialize COM/WinRT/Media Foundation with paired cleanup. Create and paint one owned window; event-driven free-threaded capture with pool2 and bounded frame wait. Verify center pixels via a staging readback, labeling this validation copy explicitly.
-- [ ] Enumerate encoder categories, then use a software-reference Media Foundation SinkWriter for the finite H.264 fixture. Request baseline/low-latency/0Bframes and record readbacks separately from enumeration. Do not claim raw packet latency or hardware encoding from file output.
-- [ ] Native x64 and Windows11ARM execution must each produce30encoded frames and a nonempty bounded fixture. Build ARM64 executable using the same SDK source; keep the ARM runtime gate open until the native runner actually completes it. Retain generated artifacts, never raw screen content.
+- [x] Add native harness/workflow invoking probe and existing-destination refusal. Compile missing source first for native RED, then implement the probe.
+- [x] Initialize COM/WinRT/Media Foundation with paired cleanup. Create and paint one owned window; event-driven free-threaded capture with pool2 and bounded frame wait. Verify center pixels via a staging readback, labeling this validation copy explicitly.
+- [x] Enumerate encoder categories, then use a software-reference Media Foundation SinkWriter for the finite H.264 fixture. Request baseline/low-latency/0Bframes and record readbacks separately from enumeration. Do not claim raw packet latency or hardware encoding from file output.
+- [x] Native x64 and Windows11ARM execution must each produce30encoded frames and a nonempty bounded fixture. Build ARM64 executable using the same SDK source; keep the ARM runtime gate open until the native runner actually completes it. Retain generated artifacts, never raw screen content.
 
 ### Task3: Apple Silicon decode/surface probe and evidence
 
 Files: `scripts/video/probe-macos.swift`, workflow Mac job, probe docs/evidence.
 Interface: `probe-macos FIXTURE_MP4` prints schema1/macOS/arm64 JSON. AVAssetReader supplies compressed samples; VideoToolbox decodes, validates dimensions/variation and reports actual hardware-decoder property. AVSampleBufferDisplayLayer in an owned NSWindow records rendering status. Diagnostic readbacks are explicit; zero-copy/onscreen pixel acceptance stays false.
 
-- [ ] Run on macos-15 after downloading only the generated Windows artifact. Decode exactly30samples, enforce bounded sample/frame sizes and runtime timeout, close the owned window/session.
-- [ ] Use strict assessor to combine native reports. Cross-build and runtime results stay separate; gate output cannot claim continuous video or end-to-end latency.
-- [ ] Run portable tests, full relevant existing checks, native workflow; one fresh review, fix Important/Critical with regressions and no re-review. Commit/push focused changes using existing authorization.
-- [ ] Record real run IDs/reports and go/no-go. If native ARM execution or direct packet/copy-path proof is absent, retain that concrete incomplete gate and do not ship a production video capability. Do not publish a new product release solely for experimental probes.
+- [x] Run on macos-15 after downloading only the generated Windows artifact. Decode exactly30samples, enforce bounded sample/frame sizes and runtime timeout, close the owned window/session.
+- [x] Use strict assessor to combine native reports. Cross-build and runtime results stay separate; gate output cannot claim continuous video or end-to-end latency.
+- [x] Run portable tests, full relevant existing checks, native workflow; one fresh review, fix Important/Critical with regressions and no re-review. Commit/push focused changes using existing authorization.
+- [x] Record real run IDs/reports and go/no-go. If native ARM execution or direct packet/copy-path proof is absent, retain that concrete incomplete gate and do not ship a production video capability. Do not publish a new product release solely for experimental probes.
 
 Execution method preserved: inline. This does not authorize calling GateB–D complete or advertising30/60FPS before actual end-to-end measurement.
+
+## Recorded outcome
+
+Native run39105862266, source dc71c2a: actual Windows ARM/x64 capture + H.264,
+Mac ARM hardware decoding of30generated pictures and native rendering status
+passed. Portable8tests, Rust222passed/9ignored, MCP14passed, strict clippy passed.
+Fresh whole-batch review found two Important issues; one fix pass addressed peak
+occupancy accounting and callback-context lifetime with regressions. Subsequent
+native SDK/container fixes preserved strict coded-frame limits. See
+[the evidence](../../coherence-video-probe-evidence.md).
+
+**Decision:** candidate SDK backend established for further experiments. Gate A
+is still incomplete because copy-path/onscreen proof is absent. No production
+video capability, permanent transport protocol, 720p30 performance acceptance or
+new app release is claimed by completion of this diagnostic plan.
