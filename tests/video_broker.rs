@@ -256,6 +256,14 @@ fn broker_descriptor_is_not_inherited_by_unrelated_child() {
     peer.set_read_timeout(Some(Duration::from_millis(300)))
         .unwrap();
     let result = peer.read(&mut [0]);
+    if let Err(error) = &result {
+        // Public enum/numeric diagnostics only: no paths, payloads or raw logs.
+        eprintln!(
+            "::error title=Video descriptor EOF::kind={:?}, code={:?}",
+            error.kind(),
+            error.raw_os_error()
+        );
+    }
     let _ = child.kill();
     let _ = child.wait();
     assert_eq!(result.unwrap(), 0, "child retained the video descriptor");

@@ -174,3 +174,19 @@ impl Read for Reader {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn connected_descriptor_has_kernel_close_on_exec_flag() {
+        let temp = tempfile::tempdir().unwrap();
+        let path = temp.path().join("video.sock");
+        let listener = std::os::unix::net::UnixListener::bind(&path).unwrap();
+        let source = connect(&path).unwrap();
+        let _peer = listener.accept().unwrap();
+        let flags = unsafe { libc::fcntl(source.as_raw_fd(), libc::F_GETFD) };
+        assert!(flags >= 0);
+        assert_ne!(flags & libc::FD_CLOEXEC, 0);
+    }
+}
