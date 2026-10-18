@@ -15,3 +15,7 @@ This is an implementation/acceptance inventory, not a declaration that the produ
 The current app viewer is bounded JPEG snapshots. Protocol/input improvements do not establish video, universal Windows compatibility or a performance advantage over Parallels. Linux cloud fixtures and native CI remain useful independent evidence; they cannot replace the hardware/driver/guest gates above. Continue the approved roadmap in dependency order, with cloud-independent work where a concrete design and useful acceptance check exist.
 
 Continuation order and per-milestone acceptance: [next delivery plan](continuation-preview21.md). First detailed task: [viewer scheduling](../superpowers/plans/2026-10-16-viewer-scheduling.md). These are proposed future work, not completed milestones.
+
+## Current priority: Coherence continuous video
+
+The owner prioritizes continuous smooth video with low resource use. Other feature expansion is deferred during this milestone. [Proposed video architecture and acceptance gates](../superpowers/specs/2026-10-18-coherence-video-design.md). This is a design proposal, not implemented video or an accepted performance result.
