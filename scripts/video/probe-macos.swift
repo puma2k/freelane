@@ -58,7 +58,11 @@ let callback: VTDecompressionOutputCallback = { context, _, status, _, image, _,
     try require(reader.startReading(), "Cannot read compressed fixture")
     var samples: [CMSampleBuffer] = []
     while let sample = output.copyNextSampleBuffer() {
-        try require(samples.count < 30 && CMSampleBufferGetTotalSampleSize(sample) <= 2 * 1024 * 1024, "Compressed sample bounds exceeded")
+        let bytes = CMSampleBufferGetTotalSampleSize(sample)
+        let count = CMSampleBufferGetNumSamples(sample)
+        let pts = CMSampleBufferGetPresentationTimeStamp(sample)
+        try require(samples.count < 30 && bytes <= 2 * 1024 * 1024,
+                    "Compressed sample bounds: buffers=\(samples.count), bytes=\(bytes), samples=\(count), pts=\(pts.value)/\(pts.timescale)")
         samples.append(sample)
     }
     try require(reader.status == .completed && samples.count == 30, "Expected30 compressed frames")
