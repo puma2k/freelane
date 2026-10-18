@@ -24,7 +24,15 @@ establish zero-copy, live transport, 720p30 performance, onscreen pixel identity
 or physical Mac sleep/wake behavior. Production launchers still do not advertise
 video; persistent worker installation and app viewer attachment remain pending.
 
-Local validation: 11 portable video tests pass. The accompanying Linux Rust
-workspace, clippy and formatting checks pass. A separate native Mac socket-EOF
-regression is under investigation; native packet probe success does not imply
-the complete repository's Mac test suite passed.
+Local validation: 12 portable video/diagnostic tests pass; 261 Rust tests pass with 9 ignored. The accompanying Linux Rust
+workspace, clippy and formatting checks pass. The separate native Mac socket-EOF
+regression failed while setting `SO_RCVTIMEO` after disconnect, before checking
+EOF. The test now uses bounded `poll` with nonblocking read, preserving its
+requirement to observe EOF while an unrelated child is running. No broker
+shutdown behavior was changed to mask inheritance. The kernel close-on-exec
+flag also has a direct assertion.
+
+At source `dcef55e`, [run 39142683488](https://github.com/puma2k/freelane/actions/runs/39142683488)
+completed both portable macOS and Linux jobs successfully (including fmt, clippy,
+workspace tests and build). This distinguishes the previously failing Mac test
+from the independently successful native capture/decoder probes.
