@@ -68,7 +68,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p target/video-probes
-          if ! swiftc -parse-as-library -swift-version 5 -O scripts/video/probe-macos.swift -o target/video-probes/probe-macos > target/video-probes/build-mac.log 2>&1; then
+          if ! swiftc -parse-as-library -swift-version 5 -O scripts/video/probe-macos.swift scripts/video/packet-input.swift -o target/video-probes/probe-macos > target/video-probes/build-mac.log 2>&1; then
             python3 - <<'PYCODE'
           from pathlib import Path
           errors=[line for line in Path('target/video-probes/build-mac.log').read_text().splitlines() if 'error:' in line][:8]
@@ -96,6 +96,11 @@ jobs:
         with:
           name: experimental-macos-video-probe-binary
           path: target/video-probes
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.99.0
+      - name: Validate direct Windows packets with the Rust protocol
+        run: cargo run --locked -p freelane-agent-protocol --example video_check -- target/video-probes/input/generated/packets.flv
       - name: Exercise native compressed decode and surface
         run: |
           set -euo pipefail
@@ -115,6 +120,16 @@ jobs:
           assert r['architecture']=='arm64' and r['decoded_frames']==30 and r['dimensions_verified'] and r['pixel_variation_verified'],r
           failure=subprocess.run(['target/video-probes/probe-macos',str(fixture),'--fail-after-first-submit'],capture_output=True,text=True,timeout=60)
           assert failure.returncode==1 and 'Injected failure after asynchronous submission' in failure.stderr and not failure.stdout,failure
+          raw=fixture.with_name('packets.flv')
+          direct=subprocess.run(['target/video-probes/probe-macos',str(raw)],capture_output=True,text=True,timeout=60)
+          Path('target/video-probes/mac-raw-stderr.txt').write_text(direct.stderr)
+          if direct.returncode:
+              print('::error title=Mac direct packet probe::'+direct.stderr[-1600:].replace('\n','%0A'))
+              raise SystemExit(direct.returncode)
+          Path('target/video-probes/mac-raw-report.json').write_text(direct.stdout)
+          d=json.loads(direct.stdout)
+          print('::notice title=Mac direct packet report::'+json.dumps(d))
+          assert d['architecture']=='arm64' and d['direct_packets_verified'] and d['decoded_frames']==30 and d['dimensions_verified'] and d['pixel_variation_verified'],d
           PY
       - name: Assess native evidence without promoting x64 to ARM acceptance
         run: |
@@ -130,4 +145,6 @@ jobs:
             target/video-probes/mac-report.json
             target/video-probes/assessment.json
             target/video-probes/mac-stderr.txt
+            target/video-probes/mac-raw-report.json
+            target/video-probes/mac-raw-stderr.txt
           if-no-files-found: warn

@@ -48,48 +48,8 @@ let callback: VTDecompressionOutputCallback = { context, _, status, _, image, _,
     try require(attributes[.type] as? FileAttributeType == .typeRegular, "Fixture must be a regular file")
     let length = (attributes[.size] as? NSNumber)?.intValue ?? 0
     try require(length > 0 && length <= 4 * 1024 * 1024, "Fixture size exceeds probe bounds")
-    let asset = AVURLAsset(url: url)
-    guard let track = asset.tracks(withMediaType: .video).first else { throw ProbeFailure(message: "No video track") }
-    let reader = try AVAssetReader(asset: asset)
-    let output = AVAssetReaderTrackOutput(track: track, outputSettings: nil)
-    output.alwaysCopiesSampleData = false
-    try require(reader.canAdd(output), "Compressed reader unavailable")
-    reader.add(output)
-    try require(reader.startReading(), "Cannot read compressed fixture")
-    var samples: [CMSampleBuffer] = []
-    var emptyContainerBuffers = 0
-    var trailingEmptyContainerBuffers = 0
-    while let sample = output.copyNextSampleBuffer() {
-        let bytes = CMSampleBufferGetTotalSampleSize(sample)
-        let count = CMSampleBufferGetNumSamples(sample)
-        let pts = CMSampleBufferGetPresentationTimeStamp(sample)
-        // AVAssetReader exposes the MP4's leading empty edit as a zero-byte buffer.
-        // It contains no coded picture/reference; accept at most one leading empty marker.
-        if bytes == 0 && samples.isEmpty && emptyContainerBuffers == 0 {
-            emptyContainerBuffers += 1
-            continue
-        }
-        // The reader also emits non-picture end/duration markers with no samples/data.
-        // Drain at most 64 non-picture markers, then require actual reader completion.
-        // Any subsequent coded picture still fails the fixed 30-picture bound.
-        if bytes == 0 && count == 0 && samples.count == 30 && trailingEmptyContainerBuffers < 64 {
-            if pts.isValid {
-                let lastPictureTime = CMSampleBufferGetPresentationTimeStamp(samples[29])
-                try require(pts.timescale > 0 && CMTimeCompare(pts, lastPictureTime) >= 0 && CMTimeCompare(pts, CMTime(value: 1, timescale: 1)) <= 0,
-                            "Unexpected terminal marker time")
-            }
-            trailingEmptyContainerBuffers += 1
-            continue
-        }
-        try require(trailingEmptyContainerBuffers == 0 && samples.count < 30 && bytes > 0 && bytes <= 2 * 1024 * 1024 && count == 1 && pts.isValid && pts.timescale > 0,
-                    "Compressed picture: buffers=\(samples.count), bytes=\(bytes), count=\(count), validPTS=\(pts.isValid), pts=\(pts.value)/\(pts.timescale), emptyMarkers=\(emptyContainerBuffers), terminalMarkers=\(trailingEmptyContainerBuffers), reader=\(reader.status.rawValue)")
-        if samples.isEmpty { try require(CMTimeCompare(pts, .zero) == 0, "First coded picture must start at zero") }
-        if let previous = samples.last {
-            try require(CMTimeCompare(pts, CMSampleBufferGetPresentationTimeStamp(previous)) > 0, "Compressed timestamps did not advance")
-        }
-        samples.append(sample)
-    }
-    try require(reader.status == .completed && samples.count == 30, "Expected30 compressed frames: count=\(samples.count), reader=\(reader.status.rawValue), terminalMarkers=\(trailingEmptyContainerBuffers), readerError=\(reader.error.map { ($0 as NSError).code } ?? 0)")
+    let input = try loadFixture(url)
+    let samples = input.samples
     guard let format = CMSampleBufferGetFormatDescription(samples[0]) else { throw ProbeFailure(message: "No H.264 format") }
     let dimensions = CMVideoFormatDescriptionGetDimensions(format)
     try require(CMFormatDescriptionGetMediaSubType(format) == kCMVideoCodecType_H264 && dimensions.width == 320 && dimensions.height == 180, "Unexpected codec/dimensions")
@@ -161,8 +121,8 @@ let callback: VTDecompressionOutputCallback = { context, _, status, _, image, _,
     let architecture = "x86_64"
     #endif
     return ["schema": 1, "platform": "macos", "architecture": architecture,
-            "decoded_frames": count, "leading_empty_container_buffers": emptyContainerBuffers,
-            "trailing_empty_container_buffers": trailingEmptyContainerBuffers, "dimensions_verified": valid,
+            "decoded_frames": count, "direct_packets_verified": input.raw, "leading_empty_container_buffers": input.leading,
+            "trailing_empty_container_buffers": input.trailing, "dimensions_verified": valid,
             "pixel_variation_verified": varying, "hardware_decoder_used": hardware,
             "hardware_readback_available": hardwareReadback, "realtime_property_applied": realtime,
             "owned_surface_created": true, "surface_rendering": rendering,

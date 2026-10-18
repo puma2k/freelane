@@ -52,9 +52,9 @@ inline void direct_encode(Report& r,const std::filesystem::path& directory) {
             last=pts;
             if(r.direct_packet_count++==0)r.direct_first_packet_us=std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now()-start).count();
             ComPtr<IMFMediaBuffer> contiguous;check_hresult(sample->ConvertToContiguousBuffer(&contiguous));
-            BYTE* data=nullptr;DWORD size=0;check_hresult(contiguous->Lock(&data,nullptr,&size));
+            BYTE* raw_bytes=nullptr;DWORD size=0;check_hresult(contiguous->Lock(&raw_bytes,nullptr,&size));
             freelane_video::Bytes bytes;
-            try {if(!data||size!=length)throw hresult_error(E_INVALIDARG);bytes.assign(data,data+size);}catch(...){contiguous->Unlock();throw;}
+            try {if(!raw_bytes||size!=length)throw hresult_error(E_INVALIDARG);bytes.assign(raw_bytes,raw_bytes+size);}catch(...){contiguous->Unlock();throw;}
             check_hresult(contiguous->Unlock());
             packet_writer.write(converter.convert(bytes),static_cast<uint64_t>(pts/10));
             r.raw_pictures=packet_writer.pictures;r.raw_configurations=packet_writer.configurations;r.raw_idrs=packet_writer.idrs;
