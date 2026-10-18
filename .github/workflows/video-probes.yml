@@ -129,7 +129,7 @@ jobs:
           Path('target/video-probes/mac-raw-report.json').write_text(direct.stdout)
           d=json.loads(direct.stdout)
           print('::notice title=Mac direct packet report::'+json.dumps(d))
-          assert d['architecture']=='arm64' and d['direct_packets_verified'] and d['decoded_frames']==30 and d['dimensions_verified'] and d['pixel_variation_verified'],d
+          assert d['architecture']=='arm64' and d['direct_packets_verified'] and d['decoded_frames']==30 and d['dimensions_verified'] and d['pixel_variation_verified'] and d['hardware_readback_available'] and d['hardware_decoder_used'],d
           PY
       - name: Assess native evidence without promoting x64 to ARM acceptance
         run: |
@@ -137,6 +137,8 @@ jobs:
           python3 -m unittest discover -s tests/video -v
           python3 scripts/video/report.py target/video-probes/input/generated/report.json target/video-probes/mac-report.json > target/video-probes/assessment.json
           python3 -c "import json; print('::notice title=Video assessment::'+json.dumps(json.load(open('target/video-probes/assessment.json'))))"
+          python3 scripts/video/report.py --direct target/video-probes/input/generated/report.json target/video-probes/mac-raw-report.json > target/video-probes/direct-assessment.json
+          python3 -c "import json; r=json.load(open('target/video-probes/direct-assessment.json')); print('::notice title=Direct video assessment::'+json.dumps(r)); assert r['candidate_direct_backend']"
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -144,6 +146,7 @@ jobs:
           path: |
             target/video-probes/mac-report.json
             target/video-probes/assessment.json
+            target/video-probes/direct-assessment.json
             target/video-probes/mac-stderr.txt
             target/video-probes/mac-raw-report.json
             target/video-probes/mac-raw-stderr.txt

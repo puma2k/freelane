@@ -35,6 +35,19 @@ class ReportTests(unittest.TestCase):
         self.assertTrue(report.assess(w,m)['gate_a_complete'])
         w['direct_max_pending_frames']=3
         self.assertFalse(report.assess(w,m)['gate_a_complete'])
+    def test_direct_path_requires_its_own_hardware_readback(self):
+        w,m=fixtures()
+        w.update(raw_stream_pictures=30,raw_stream_configurations=1,raw_stream_idrs=1,direct_hresult=0)
+        m.update(direct_packets_verified=True,hardware_readback_available=True)
+        self.assertTrue(report.assess_direct(w,m)['candidate_direct_backend'])
+        m['hardware_readback_available']=False
+        self.assertFalse(report.assess_direct(w,m)['candidate_direct_backend'])
+        m['hardware_readback_available']=True;m['hardware_decoder_used']=False
+        self.assertFalse(report.assess_direct(w,m)['candidate_direct_backend'])
+        m['hardware_decoder_used']=True;m['direct_packets_verified']=False
+        self.assertFalse(report.assess_direct(w,m)['candidate_direct_backend'])
+        w['raw_stream_configurations']=True
+        with self.assertRaises(ValueError):report.assess_direct(w,m)
     def test_wrong_types_and_counts_fail_closed(self):
         for key,value in [('owned_pixels_verified',1),('encoded_frames',True),('schema',2),('encoded_frames',-1),('architecture','unknown')]:
             w,m=fixtures();w[key]=value
