@@ -83,7 +83,7 @@ let callback: VTDecompressionOutputCallback = { context, _, status, _, image, _,
     try require(VTDecompressionSessionWaitForAsynchronousFrames(decoder) == noErr, "Decoder did not finish")
     let decodeMilliseconds = (CFAbsoluteTimeGetCurrent() - started) * 1000
     var hardwareValue: CFTypeRef?
-    let hardwareReadback = VTSessionCopyProperty(decoder, key: kVTDecompressionPropertyKey_UsingHardwareAcceleratedVideoDecoder, allocator: kCFAllocatorDefault, propertyValueOut: &hardwareValue) == noErr
+    let hardwareReadback = VTSessionCopyProperty(decoder, key: kVTDecompressionPropertyKey_UsingHardwareAcceleratedVideoDecoder, allocator: kCFAllocatorDefault, valueOut: &hardwareValue) == noErr
     let hardware = hardwareReadback && (hardwareValue as? Bool == true)
     state.lock.lock()
     let count = state.frames, valid = state.valid, varying = state.shades.count >= 2
@@ -135,6 +135,8 @@ let callback: VTDecompressionOutputCallback = { context, _, status, _, image, _,
             "validation_cpu_readback": true, "decode_file_elapsed_ms": decodeMilliseconds,
             "continuous_video_accepted": false]
 }
+@main struct ProbeMain {
+    @MainActor static func main() {
 do {
     try require(CommandLine.arguments.count == 2, "Usage: probe-macos GENERATED_FIXTURE_MP4")
     let result = try probe(URL(fileURLWithPath: CommandLine.arguments[1]))
@@ -144,4 +146,7 @@ do {
     let message = (error as? ProbeFailure)?.message ?? "Native video probe failed"
     FileHandle.standardError.write(Data((message + "\n").utf8))
     exit(1)
+}
+
+    }
 }

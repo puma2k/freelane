@@ -6,7 +6,7 @@
 
 **Architecture:** Standalone experimental SDK probes, an owned generated MP4 fixture and strict portable evidence assessment. No production protocol, viewer codec dependency or automatic capture is added.
 
-**Tech Stack:** Windows SDK C++17/C++/WinRT, Media Foundation, Swift with AVFoundation/VideoToolbox/AppKit, Python standard library, native GitHub CI.
+**Tech Stack:** Windows SDK C++20/C++/WinRT, Media Foundation, Swift with AVFoundation/VideoToolbox/AppKit, Python standard library, native GitHub CI.
 
 **Spec:** `docs/superpowers/specs/2026-10-18-coherence-video-design.md`, approved by user “làm đi e”. This plan implements GateA diagnostics; a file encode or surface submission alone cannot accept latency/zero-copy/full video.
 
@@ -44,7 +44,7 @@ Interface: `probe-windows.exe NEW_DIRECTORY` writes `report.json` and generated 
 - [ ] Add native harness/workflow invoking probe and existing-destination refusal. Compile missing source first for native RED, then implement the probe.
 - [ ] Initialize COM/WinRT/Media Foundation with paired cleanup. Create and paint one owned window; event-driven free-threaded capture with pool2 and bounded frame wait. Verify center pixels via a staging readback, labeling this validation copy explicitly.
 - [ ] Enumerate encoder categories, then use a software-reference Media Foundation SinkWriter for the finite H.264 fixture. Request baseline/low-latency/0Bframes and record readbacks separately from enumeration. Do not claim raw packet latency or hardware encoding from file output.
-- [ ] Native x64 execution must produce30encoded frames and a nonempty bounded fixture. Build ARM64 executable using the same SDK source; keep ARM runtime gate open until actually run there. Retain generated artifacts, never raw screen content.
+- [ ] Native x64 and Windows11ARM execution must each produce30encoded frames and a nonempty bounded fixture. Build ARM64 executable using the same SDK source; keep the ARM runtime gate open until the native runner actually completes it. Retain generated artifacts, never raw screen content.
 
 ### Task3: Apple Silicon decode/surface probe and evidence
 

@@ -25,7 +25,7 @@ jobs:
           $targets = if ($hostArch -eq 'arm64') { @('arm64') } else { @('amd64','arm64') }
           foreach ($arch in $targets) {
             $script = Join-Path $env:RUNNER_TEMP "freelane-video-$arch.cmd"
-            @('@echo off', "call `"$vs\Common7\Tools\VsDevCmd.bat`" -no_logo -host_arch=$hostArch -arch=$arch", 'if errorlevel 1 exit /b 1', "cl /nologo /std:c++20 /EHsc /W4 /DUNICODE /D_UNICODE /Fe:target\video-probes\probe-$arch.exe scripts\video\probe-windows.cpp mfplat.lib mfreadwrite.lib mfuuid.lib ole32.lib oleaut32.lib d3d11.lib dxgi.lib windowsapp.lib user32.lib", 'exit /b %errorlevel%') | Set-Content -Encoding ascii $script
+            @('@echo off', "call `"$vs\Common7\Tools\VsDevCmd.bat`" -no_logo -host_arch=$hostArch -arch=$arch", 'if errorlevel 1 exit /b 1', "cl /nologo /std:c++20 /EHsc /W4 /DUNICODE /D_UNICODE /Fe:target\video-probes\probe-$arch.exe scripts\video\probe-windows.cpp mfplat.lib mfreadwrite.lib mfuuid.lib ole32.lib oleaut32.lib d3d11.lib dxgi.lib windowsapp.lib user32.lib gdi32.lib", 'exit /b %errorlevel%') | Set-Content -Encoding ascii $script
             & cmd /d /c $script *> "target/video-probes/build-$arch.log"
             if ($LASTEXITCODE -ne 0) {
               Get-Content "target/video-probes/build-$arch.log" | Where-Object { $_ -match 'error C[0-9]+|fatal error|error LNK' } | Select-Object -First 10 | ForEach-Object { Write-Output "::error title=Native probe build::$_" }
@@ -64,7 +64,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p target/video-probes
-          if ! swiftc -swift-version 5 -O scripts/video/probe-macos.swift -o target/video-probes/probe-macos > target/video-probes/build-mac.log 2>&1; then
+          if ! swiftc -parse-as-library -swift-version 5 -O scripts/video/probe-macos.swift -o target/video-probes/probe-macos > target/video-probes/build-mac.log 2>&1; then
             python3 - <<'PYCODE'
           from pathlib import Path
           errors=[line for line in Path('target/video-probes/build-mac.log').read_text().splitlines() if 'error:' in line][:8]
