@@ -414,3 +414,36 @@ fn live_readonly_share_is_enforced_by_backend_and_remains_ubuntu_only() {
         qemu::ShareMode::Virtio9pReadonly
     );
 }
+
+#[test]
+fn video_port_is_separate_and_uses_the_existing_virtio_controller() {
+    let images = Images::new();
+    let mut config = images.config();
+    config.runtime.as_mut().unwrap().guest_agent = true;
+    let args = qemu::arguments(&config, &images.0, &images.0.join("qmp.sock")).unwrap();
+    assert_eq!(
+        args.iter()
+            .filter(|arg| arg.starts_with("virtio-serial-pci,"))
+            .count(),
+        1
+    );
+    for (id, name, socket) in [
+        ("guestagent", "org.freelane.agent.0", "agent.sock"),
+        ("guestvideo", "org.freelane.video.0", "video.sock"),
+    ] {
+        assert!(args
+            .iter()
+            .any(|arg| arg == &format!("virtserialport,chardev={id},name={name}")));
+        assert!(args
+            .iter()
+            .any(|arg| arg.starts_with(&format!("socket,id={id},path="))
+                && arg.contains(socket)
+                && arg.ends_with("server=on,wait=off")));
+    }
+    assert!(!args.iter().any(|arg| arg.starts_with("tcp:")));
+    config.runtime.as_mut().unwrap().guest_agent = false;
+    let args = qemu::arguments(&config, &images.0, &images.0.join("qmp.sock")).unwrap();
+    assert!(!args
+        .iter()
+        .any(|arg| arg.contains("org.freelane.") || arg.contains("video.sock")));
+}

@@ -436,6 +436,14 @@ fn arguments_inner(
             "virtio-serial-pci,disable-legacy=on".into(),
             "-device".into(),
             "virtserialport,chardev=guestagent,name=org.freelane.agent.0".into(),
+            "-chardev".into(),
+            format!(
+                "socket,id=guestvideo,path={},server=on,wait=off",
+                text_path(&Path::new(socket).parent().unwrap().join("video.sock"))?
+                    .replace(',', ",,")
+            ),
+            "-device".into(),
+            "virtserialport,chardev=guestvideo,name=org.freelane.video.0".into(),
         ]);
     }
     if runtime.network {
@@ -614,6 +622,7 @@ impl QemuBackend {
         if self.lock.is_some() {
             let _ = fs::remove_file(self.directory.join("qmp.sock"));
             let _ = fs::remove_file(self.directory.join("agent.sock"));
+            let _ = fs::remove_file(self.directory.join("video.sock"));
             let _ = fs::remove_file(self.directory.join("console.sock"));
             let _ = fs::remove_file(self.directory.join("tpm.sock"));
         }

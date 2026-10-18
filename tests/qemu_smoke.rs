@@ -393,6 +393,30 @@ fn uefi_boot_with_threading(threading: Option<qemu::TcgThreading>) {
         .unwrap()
         .iter()
         .any(|channel| channel["label"] == "guestagent"));
+    assert!(channels
+        .as_array()
+        .unwrap()
+        .iter()
+        .any(|channel| channel["label"] == "guestvideo"));
+    let video = freelane::video::VideoBroker::connect(
+        &config_path,
+        freelane_agent_protocol::WindowTarget {
+            handle: 1,
+            pid: 1,
+            created: 1,
+            incarnation: 1,
+        },
+        freelane_agent_protocol::video::Binding {
+            nonce: [1; 16],
+            stream: 1,
+            generation: 1,
+        },
+    )
+    .unwrap(); // Owned transport fixture, not a claim of Windows capture authorization.
+    drop(video);
+    assert!(qmp.execute("query-status", None).unwrap()["running"]
+        .as_bool()
+        .unwrap());
     let tpms = qmp.execute("query-tpm", None).unwrap();
     assert_eq!(tpms[0]["options"]["type"], "emulator");
     if let Some(artifact) = std::env::var_os("FREELANE_TEST_SCREENSHOT") {
@@ -412,6 +436,7 @@ fn uefi_boot_with_threading(threading: Option<qemu::TcgThreading>) {
     backend.stop().unwrap();
     assert!(!backend.directory().join("qmp.sock").exists());
     assert!(!backend.directory().join("agent.sock").exists());
+    assert!(!backend.directory().join("video.sock").exists());
     assert_eq!(
         fs::read(&template).unwrap(),
         template_before,

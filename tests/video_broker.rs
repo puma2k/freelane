@@ -242,3 +242,21 @@ fn saturated_video_does_not_take_the_control_channel_lease() {
     drop(b);
     source.join().unwrap();
 }
+
+#[test]
+fn broker_descriptor_is_not_inherited_by_unrelated_child() {
+    use std::io::Read;
+    let f = Fixture::new();
+    let (b, mut peer) = f.connect();
+    let mut child = std::process::Command::new("sleep")
+        .arg("3")
+        .spawn()
+        .unwrap();
+    drop(b);
+    peer.set_read_timeout(Some(Duration::from_millis(300)))
+        .unwrap();
+    let result = peer.read(&mut [0]);
+    let _ = child.kill();
+    let _ = child.wait();
+    assert_eq!(result.unwrap(), 0, "child retained the video descriptor");
+}

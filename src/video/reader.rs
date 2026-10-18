@@ -42,11 +42,19 @@ pub(super) fn connect(path: &Path) -> io::Result<UnixStream> {
         *out = *byte as _;
     }
     // The returned descriptor is newly owned and immediately wrapped, including error paths.
-    let raw = unsafe { libc::socket(libc::AF_UNIX, libc::SOCK_STREAM, 0) };
+    #[cfg(target_os = "linux")]
+    let socket_flags = libc::SOCK_STREAM | libc::SOCK_CLOEXEC;
+    #[cfg(not(target_os = "linux"))]
+    let socket_flags = libc::SOCK_STREAM;
+    let raw = unsafe { libc::socket(libc::AF_UNIX, socket_flags, 0) };
     if raw < 0 {
         return Err(io::Error::last_os_error());
     }
     let fd = unsafe { OwnedFd::from_raw_fd(raw) };
+    // Darwin lacks SOCK_CLOEXEC: set the flag before exposing or connecting the fd.
+    if unsafe { libc::fcntl(fd.as_raw_fd(), libc::F_SETFD, libc::FD_CLOEXEC) } < 0 {
+        return Err(io::Error::last_os_error());
+    }
     let stream = UnixStream::from(fd);
     stream.set_nonblocking(true)?;
     // Borrowed descriptor/address; kernel does not retain the pointer.
