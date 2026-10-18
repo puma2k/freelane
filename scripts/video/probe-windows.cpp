@@ -84,7 +84,7 @@ void capture(Report& r) {
     pool.FrameArrived(token);
     Direct3D11CaptureFrame frame{nullptr};{std::lock_guard<std::mutex> lock(state->mutex);frame=state->first;state->first=nullptr;}
     if(frame) {
-        auto access=frame.Surface().as<IDirect3DDxgiInterfaceAccess>();
+        auto access=frame.Surface().as<::Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess>();
         ComPtr<ID3D11Texture2D> texture;check_hresult(access->GetInterface(__uuidof(ID3D11Texture2D),reinterpret_cast<void**>(texture.GetAddressOf())));
         D3D11_TEXTURE2D_DESC desc{};texture->GetDesc(&desc);
         if(desc.Width==0||desc.Height==0||desc.Width>1920||desc.Height>1080)throw hresult_error(E_INVALIDARG);
