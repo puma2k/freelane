@@ -5,6 +5,27 @@ use freelane_agent_protocol::{
     WindowTarget,
 };
 use std::io;
+// Never evict authorization history: eviction would permit replay. Bound memory
+// to 2 MiB of bindings, and refuse fresh starts when exhausted. Only restarting
+// the owning agent (which also invalidates window incarnations) resets history.
+const MAX_RETIRED: usize = 65_536;
+fn validate_restart(retired: &[Binding], binding: Binding) -> io::Result<()> {
+    if retired.iter().any(|old| {
+        old.nonce == binding.nonce
+            || (old.stream == binding.stream && binding.generation <= old.generation)
+    }) {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidInput,
+            "Video restart requires a fresh nonce and generation",
+        ));
+    }
+    if retired.len() >= MAX_RETIRED {
+        return Err(io::Error::other(
+            "Video authorization history is full; restart the guest agent before a fresh session",
+        ));
+    }
+    Ok(())
+}
 pub trait Encoder {
     fn available(&self) -> bool;
     fn authorize(&mut self, target: &WindowTarget) -> io::Result<()>;
@@ -21,14 +42,14 @@ struct Active {
 pub struct Session<E: Encoder> {
     backend: E,
     active: Option<Active>,
-    retired: Option<Binding>,
+    retired: Vec<Binding>,
 }
 impl<E: Encoder> Session<E> {
     pub fn new(backend: E) -> Self {
         Self {
             backend,
             active: None,
-            retired: None,
+            retired: Vec::new(),
         }
     }
     pub fn available(&self) -> bool {
@@ -38,7 +59,7 @@ impl<E: Encoder> Session<E> {
         if let Some(active) = self.active.as_mut() {
             active.confirmed = false; // A failed stop must never become an idempotent Started reply.
             self.backend.stop()?;
-            self.retired = Some(active.parameters.binding);
+            self.retired.push(active.parameters.binding);
             self.active = None;
         }
         Ok(())
@@ -97,16 +118,7 @@ impl<E: Encoder> Session<E> {
                         parameters: parameters.clone(),
                     });
                 }
-                if self.retired.is_some_and(|old| {
-                    old.nonce == parameters.binding.nonce
-                        || (old.stream == parameters.binding.stream
-                            && parameters.binding.generation <= old.generation)
-                }) {
-                    return Err(io::Error::new(
-                        io::ErrorKind::InvalidInput,
-                        "Video restart requires a fresh nonce and generation",
-                    ));
-                }
+                validate_restart(&self.retired, parameters.binding)?;
                 if !self.backend.available() {
                     return Err(io::ErrorKind::Unsupported.into());
                 }
@@ -131,7 +143,7 @@ impl<E: Encoder> Session<E> {
                         return Err(io::ErrorKind::PermissionDenied.into());
                     }
                     self.stop_owned()?;
-                } else if self.retired != Some(*binding) {
+                } else if self.retired.last() != Some(binding) {
                     return Err(io::ErrorKind::NotFound.into());
                 }
                 Ok(Reply::Stopped { binding: *binding })
@@ -154,5 +166,32 @@ impl<E: Encoder> Session<E> {
 impl<E: Encoder> Drop for Session<E> {
     fn drop(&mut self) {
         let _ = self.stop_owned();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn full_history_refuses_new_sessions_without_forgetting_old_bindings() {
+        let old = Binding {
+            nonce: [1; 16],
+            stream: 1,
+            generation: 1,
+        };
+        let fresh = Binding {
+            nonce: [2; 16],
+            stream: 2,
+            generation: 1,
+        };
+        let mut retired = vec![old; MAX_RETIRED - 1];
+        validate_restart(&retired, fresh).unwrap();
+        retired.push(old);
+        assert!(validate_restart(&retired, fresh).is_err());
+        assert_eq!(
+            validate_restart(&retired, old).unwrap_err().kind(),
+            io::ErrorKind::InvalidInput
+        );
+        assert_eq!(retired.len(), MAX_RETIRED);
     }
 }

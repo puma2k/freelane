@@ -141,6 +141,35 @@ fn idempotent_start_busy_target_and_exact_owner_commands() {
     assert!(s.action(&start).is_err());
 }
 #[test]
+fn retired_authorization_cannot_replay_after_another_stream() {
+    let (mut s, signals) = session();
+    let a = parameters();
+    let mut b = a.clone();
+    b.binding.stream += 1;
+    b.binding.generation = 1;
+    b.binding.nonce = [8; 16];
+    for p in [&a, &b] {
+        s.action(&Operation::Start {
+            parameters: p.clone(),
+        })
+        .unwrap();
+        s.action(&Operation::Stop { binding: p.binding }).unwrap();
+    }
+    let mut attempts = vec![a.clone()];
+    let mut reused_nonce = a.clone();
+    reused_nonce.binding.stream += 2;
+    reused_nonce.binding.generation += 1;
+    attempts.push(reused_nonce);
+    let mut regressed_generation = a;
+    regressed_generation.binding.nonce = [9; 16];
+    regressed_generation.binding.generation -= 1;
+    attempts.push(regressed_generation);
+    for p in attempts {
+        assert!(s.action(&Operation::Start { parameters: p }).is_err());
+    }
+    assert_eq!(signals.starts.load(Ordering::SeqCst), 2);
+}
+#[test]
 fn startup_failure_cleans_owned_child_and_uncertain_cleanup_stays_quarantined() {
     let (mut s, signals) = session();
     let p = parameters();
