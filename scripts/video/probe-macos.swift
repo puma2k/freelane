@@ -69,10 +69,15 @@ let callback: VTDecompressionOutputCallback = { context, _, status, _, image, _,
             emptyContainerBuffers += 1
             continue
         }
-        // The reader also emits an end marker with no samples, data or valid time.
+        // The reader also emits non-picture end/duration markers with no samples/data.
         // Drain at most 64 non-picture markers, then require actual reader completion.
         // Any subsequent coded picture still fails the fixed 30-picture bound.
-        if bytes == 0 && count == 0 && !pts.isValid && samples.count == 30 && trailingEmptyContainerBuffers < 64 {
+        if bytes == 0 && count == 0 && samples.count == 30 && trailingEmptyContainerBuffers < 64 {
+            if pts.isValid {
+                let lastPictureTime = CMSampleBufferGetPresentationTimeStamp(samples[29])
+                try require(pts.timescale > 0 && CMTimeCompare(pts, lastPictureTime) >= 0 && CMTimeCompare(pts, CMTime(value: 1, timescale: 1)) <= 0,
+                            "Unexpected terminal marker time")
+            }
             trailingEmptyContainerBuffers += 1
             continue
         }

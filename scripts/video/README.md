@@ -45,7 +45,8 @@ increasing presentation timestamps, decodes them with VideoToolbox, and checks
 320×180 dimensions and generated pixel variation. The MP4 reader can expose one
 leading empty edit and a bounded tail of empty end markers (at most 64); actual
 reader completion is still required. End markers must have zero bytes, zero
-samples and invalid timestamps, and can occur only after all 30 pictures. They
+samples, and can occur only after all 30 pictures. Valid marker timestamps must
+fall between the final picture and the one-second fixture endpoint. They
 contain no coded picture and are counted separately. Coded data is never skipped to meet the
 frame bound. The probe queries actual hardware decoder use and submits the
 compressed pictures to an owned `AVSampleBufferDisplayLayer` window.
