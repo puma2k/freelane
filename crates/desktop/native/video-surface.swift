@@ -51,7 +51,7 @@ final class NativeDecodeState: @unchecked Sendable {
     func complete(_ status: OSStatus, _ flags: VTDecodeInfoFlags, _ image: CVImageBuffer?, _ time: CMTime) {
         lock.lock()
         if inflight > 0 { inflight -= 1 }
-        if closed { lock.unlock(); return }
+        if closed || error != 0 { lock.unlock(); return }
         guard status == noErr else { error = 3; lock.unlock(); return }
         guard let image = image else {
             if !flags.contains(.frameDropped) { error = 4 }

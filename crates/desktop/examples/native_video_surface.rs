@@ -93,6 +93,12 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
     }
     impl eframe::App for Fixture {
         fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
+            // Closing is deferred by eframe: later UI passes must preserve the
+            // terminal report and must not recreate a decoder on an empty stream.
+            if self.result.lock().unwrap().is_some() {
+                ui.ctx().send_viewport_cmd(egui::ViewportCommand::Close);
+                return;
+            }
             let close = match self.tick(ui, frame) {
                 Ok(close) => close,
                 Err(error) => {

@@ -211,7 +211,19 @@ jobs:
       - name: Exercise Rust UI-thread embedded native surface
         run: |
           set -euo pipefail
-          cargo build --locked -p freelane-desktop --features native-video --example native_video_surface
+          if ! cargo build --locked -p freelane-desktop --features native-video --example native_video_surface > target/video-probes/build-eframe.log 2>&1; then
+            python3 - <<'PYCODE'
+          from pathlib import Path
+          lines=Path('target/video-probes/build-eframe.log').read_text().splitlines()
+          selected=[]
+          for index,line in enumerate(lines):
+              if line.startswith('error'):
+                  selected.extend(lines[index:index+12])
+          message='\n'.join(selected)[-7000:]
+          print('::error title=Rust native surface build::'+message.replace('%','%25').replace('\r','%0D').replace('\n','%0A'))
+          PYCODE
+            exit 1
+          fi
           python3 - <<'PYCODE'
           import subprocess,json
           from pathlib import Path
@@ -238,6 +250,7 @@ jobs:
         with:
           name: experimental-macos-video-probe
           path: |
+            target/video-probes/build-eframe.log
             target/video-probes/eframe-surface-report.json
             target/video-probes/eframe-surface-stderr.txt
             target/video-probes/surface-report.json
