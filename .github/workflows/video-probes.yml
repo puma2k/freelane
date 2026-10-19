@@ -1,9 +1,9 @@
 name: Experimental native video probes
 on:
   push:
-    paths: ['scripts/video/**', 'tests/video/**', 'crates/desktop/native/**', '.github/workflows/video-probes.yml']
+    paths: ['scripts/video/**', 'tests/video/**', 'crates/desktop/**', '.github/workflows/video-probes.yml']
   pull_request:
-    paths: ['scripts/video/**', 'tests/video/**', 'crates/desktop/native/**', '.github/workflows/video-probes.yml']
+    paths: ['scripts/video/**', 'tests/video/**', 'crates/desktop/**', '.github/workflows/video-probes.yml']
 permissions:
   contents: read
 jobs:
@@ -208,6 +208,23 @@ jobs:
           print('::notice title=Embedded native surface report::'+json.dumps(report))
           assert report['decoded']==30 and report['presented']>0 and report['hardware'] and report['nv12'] and report['embedded_view'] and report['asynchronous_close_cycles']==8 and report['pixel_variation'],report
           PY
+      - name: Exercise Rust UI-thread embedded native surface
+        run: |
+          set -euo pipefail
+          cargo build --locked -p freelane-desktop --features native-video --example native_video_surface
+          python3 - <<'PYCODE'
+          import subprocess,json
+          from pathlib import Path
+          result=subprocess.run(['target/debug/examples/native_video_surface','target/video-probes/input/generated/captured-packets.flv'],capture_output=True,text=True,timeout=45)
+          Path('target/video-probes/eframe-surface-stderr.txt').write_text(result.stderr)
+          if result.returncode:
+              print('::error title=Rust embedded native surface::'+result.stderr[-2000:].replace('\n','%0A'))
+              raise SystemExit(result.returncode)
+          report=json.loads(result.stdout)
+          Path('target/video-probes/eframe-surface-report.json').write_text(result.stdout)
+          print('::notice title=Rust embedded native surface report::'+json.dumps(report))
+          assert report['decoded']==30 and report['presented']>0 and report['hardware'] and report['embedded_eframe_view'],report
+          PYCODE
       - name: Assess native evidence without promoting x64 to ARM acceptance
         run: |
           set -euo pipefail
@@ -221,6 +238,8 @@ jobs:
         with:
           name: experimental-macos-video-probe
           path: |
+            target/video-probes/eframe-surface-report.json
+            target/video-probes/eframe-surface-stderr.txt
             target/video-probes/surface-report.json
             target/video-probes/surface-stderr.txt
             target/video-probes/mac-report.json

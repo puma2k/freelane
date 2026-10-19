@@ -8,6 +8,7 @@ mod folder_ui;
 mod i18n;
 mod interface;
 mod mobile_ui;
+mod native_video;
 mod recovery_ui;
 mod resource_ui;
 mod settings_io;

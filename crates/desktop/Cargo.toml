@@ -5,6 +5,9 @@ edition = "2021"
 rust-version = "1.99"
 license = "MIT"
 
+[features]
+native-video = []
+
 [dependencies]
 freelane = { path = "../.." }
 eframe = { version = "0.36.2", default-features = false, features = ["glow", "x11", "default_fonts"] }
@@ -14,3 +17,4 @@ libc = "0.2"
 arboard = { version = "3", default-features = false }
 freelane-agent-protocol = { path = "../agent-protocol" }
 serde_json = "1"
+raw-window-handle = "0.6.2"

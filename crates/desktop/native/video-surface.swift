@@ -165,14 +165,17 @@ func nativeVideoFormat(_ bytes: [UInt8]) throws -> CMVideoFormatDescription {
         }
         self.decoder = session; self.state = state; self.format = format; release = false
     }
-    func submit(_ bytes: [UInt8], _ pts: UInt64, _ idr: Bool) -> Int32 {
+    func submit(_ bytes: UnsafeBufferPointer<UInt8>, _ pts: UInt64, _ idr: Bool) -> Int32 {
         guard !closed, let state = state, let decoder = decoder, let format = format,
               !bytes.isEmpty, bytes.count <= 2 * 1024 * 1024, pts <= UInt64(Int64.max) else { return -1 }
+        let accepted = state.begin(pts); if accepted != 1 { return accepted }
+        var submitted = false
+        defer { if !submitted { state.rejected() } }
         var block: CMBlockBuffer?
         guard CMBlockBufferCreateWithMemoryBlock(allocator: kCFAllocatorDefault, memoryBlock: nil, blockLength: bytes.count,
             blockAllocator: kCFAllocatorDefault, customBlockSource: nil, offsetToData: 0, dataLength: bytes.count,
             flags: 0, blockBufferOut: &block) == noErr, let block = block else { return -1 }
-        let copied = bytes.withUnsafeBytes { CMBlockBufferReplaceDataBytes(with: $0.baseAddress!, blockBuffer: block, offsetIntoDestination: 0, dataLength: bytes.count) }
+        let copied = CMBlockBufferReplaceDataBytes(with: bytes.baseAddress!, blockBuffer: block, offsetIntoDestination: 0, dataLength: bytes.count)
         guard copied == noErr else { return -1 }
         var timing = CMSampleTimingInfo(duration: .invalid, presentationTimeStamp: CMTime(value: Int64(pts), timescale: 1000000), decodeTimeStamp: .invalid)
         var size = bytes.count
@@ -185,9 +188,8 @@ func nativeVideoFormat(_ bytes: [UInt8]) throws -> CMVideoFormatDescription {
             CFDictionarySetValue(entry, Unmanaged.passUnretained(kCMSampleAttachmentKey_NotSync).toOpaque(),
                                  Unmanaged.passUnretained(idr ? kCFBooleanFalse : kCFBooleanTrue).toOpaque())
         }
-        let accepted = state.begin(pts); if accepted != 1 { return accepted }
         let result = VTDecompressionSessionDecodeFrame(decoder, sampleBuffer: sample, flags: [._EnableAsynchronousDecompression], frameRefcon: nil, infoFlagsOut: nil)
-        if result != noErr { state.rejected(); return -1 }; return 1
+        if result != noErr { return -1 }; submitted = true; return 1
     }
     func place(_ x: Double, _ y: Double, _ width: Double, _ height: Double, _ visible: Bool) {
         guard !closed && [x,y,width,height].allSatisfy({ $0.isFinite }) && width > 0 && height > 0 else { container.isHidden = true; return }
@@ -238,7 +240,7 @@ func freelaneVideoConfigure(_ context: UnsafeMutableRawPointer?, _ data: UnsafeP
 @MainActor @_cdecl("freelane_video_submit")
 func freelaneVideoSubmit(_ context: UnsafeMutableRawPointer?, _ data: UnsafePointer<UInt8>?, _ length: Int, _ pts: UInt64, _ idr: Int32) -> Int32 {
     guard let context = context, let data = data, length > 0 && length <= 2*1024*1024 && (idr == 0 || idr == 1) else { return -1 }
-    return Unmanaged<NativeVideoSurface>.fromOpaque(context).takeUnretainedValue().submit(Array(UnsafeBufferPointer(start: data,count: length)),pts,idr == 1)
+    return Unmanaged<NativeVideoSurface>.fromOpaque(context).takeUnretainedValue().submit(UnsafeBufferPointer(start: data,count: length),pts,idr == 1)
 }
 @MainActor @_cdecl("freelane_video_layout")
 func freelaneVideoLayout(_ context: UnsafeMutableRawPointer?, _ x: Double, _ y: Double, _ width: Double, _ height: Double, _ visible: Int32) {

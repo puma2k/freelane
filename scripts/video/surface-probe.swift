@@ -3,6 +3,7 @@ import Foundation
 import AppKit
 import AVFoundation
 import CoreVideo
+import VideoToolbox
 
 struct ProbeFailure: Error { let message: String }
 func require(_ valid: Bool, _ message: String) throws { if !valid { throw ProbeFailure(message: message) } }
@@ -30,14 +31,15 @@ func require(_ valid: Bool, _ message: String) throws { if !valid { throw ProbeF
     for (index,sample) in fixture.samples.enumerated() {
         guard let block = CMSampleBufferGetDataBuffer(sample) else { throw ProbeFailure(message:"Missing compressed data") }
         var bytes = [UInt8](repeating:0,count:CMBlockBufferGetDataLength(block))
-        let copied = bytes.withUnsafeMutableBytes { CMBlockBufferCopyDataBytes(block,atOffset:0,dataLength:bytes.count,destination:$0.baseAddress!) }
+        let count = bytes.count
+        let copied = bytes.withUnsafeMutableBytes { CMBlockBufferCopyDataBytes(block,atOffset:0,dataLength:count,destination:$0.baseAddress!) }
         try require(copied == noErr,"Cannot read owned compressed sample")
         let time = CMSampleBufferGetPresentationTimeStamp(sample)
         let pts = UInt64(CMTimeGetSeconds(time)*1_000_000)
         let deadline = Date().addingTimeInterval(2)
         var accepted: Int32 = 0
         while accepted == 0 && Date() < deadline {
-            accepted = surface.submit(bytes,pts,index == 0)
+            accepted = bytes.withUnsafeBufferPointer { surface.submit($0,pts,index == 0) }
             if accepted == 0 { RunLoop.main.run(until: Date().addingTimeInterval(0.001)) }
         }
         try require(accepted == 1,"Native surface input stalled/rejected")
@@ -76,7 +78,7 @@ func require(_ valid: Bool, _ message: String) throws { if !valid { throw ProbeF
         var bytes = [UInt8](repeating:0,count:CMBlockBufferGetDataLength(block))
         let count = bytes.count
         try require(bytes.withUnsafeMutableBytes { CMBlockBufferCopyDataBytes(block,atOffset:0,dataLength:count,destination:$0.baseAddress!) } == noErr,"Cannot copy first picture")
-        try require(next.submit(bytes,0,true) == 1,"Cannot queue asynchronous picture")
+        try require(bytes.withUnsafeBufferPointer { next.submit($0,0,true) } == 1,"Cannot queue asynchronous picture")
         next.close(); retired += 1 // Late callbacks must not touch the removed view.
         try require(!host.subviews.contains(next.container),"Asynchronous close retained view")
     }
