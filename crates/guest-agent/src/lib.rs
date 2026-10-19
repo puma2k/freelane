@@ -6,6 +6,7 @@ pub mod mounts;
 pub mod settings;
 pub mod transfer;
 pub mod video;
+pub mod video_process;
 use freelane_agent_protocol::{Action, Outcome, Request, Response, VERSION};
 use std::io::{self, BufRead, Write};
 #[cfg(any(windows, target_os = "linux"))]

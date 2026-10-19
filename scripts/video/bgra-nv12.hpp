@@ -3,11 +3,11 @@
 #include "annexb.hpp"
 #include <algorithm>
 namespace freelane_video {
-inline Bytes bgra_nv12(const uint8_t* data,size_t bytes,size_t stride,unsigned width,unsigned height) {
+inline Bytes bgra_nv12(const uint8_t* data,size_t bytes,size_t stride,unsigned width,unsigned height,unsigned w=320,unsigned h=180) {
     require(data&&width>0&&height>0&&width<=1920&&height<=1080,"Invalid BGRA surface");
     require(stride>=size_t(width)*4&&stride<=1920*4+65536,"Invalid BGRA stride");
     require(bytes>=stride*(height-1)+size_t(width)*4,"Truncated BGRA surface");
-    constexpr unsigned w=320,h=180;
+    require(w>0&&h>0&&w<=1920&&h<=1080&&w%2==0&&h%2==0,"Invalid NV12 dimensions");
     Bytes output(w*h*3/2);
     auto pixel=[&](unsigned x,unsigned y){return data+(size_t(y)*height/h)*stride+(size_t(x)*width/w)*4;};
     auto clipped=[](int n){return static_cast<uint8_t>((std::clamp)(n,0,255));};
