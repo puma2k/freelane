@@ -69,6 +69,13 @@ jobs:
           $p = Start-Process $exe -ArgumentList '--owned-stall-test' -RedirectStandardOutput $output -PassThru -NoNewWindow
           if (-not $p.WaitForExit(5000)) { $p.Kill(); throw 'Stalled output did not terminate helper' }
           if ($p.ExitCode -ne 0 -or (Get-Content $output -Raw) -ne 'TF') { throw 'Overlapped output cancellation was not verified' }
+          $output = Join-Path $PWD 'target/video-probes/progress-stdout.txt'
+          $clock = [System.Diagnostics.Stopwatch]::StartNew()
+          $p = Start-Process $exe -ArgumentList '--owned-progress-stall-test' -RedirectStandardOutput $output -PassThru -NoNewWindow
+          if (-not $p.WaitForExit(3000)) { $p.Kill(); throw 'Stalled encoder remained active' }
+          if ($p.ExitCode -ne 3 -or (Get-Content $output -Raw) -ne 'T' -or $clock.ElapsedMilliseconds -ge 3000) { throw 'Encoder output-progress deadline was not verified' }
+          Write-Output '::notice title=Worker deadlines::Overlapped write cancellation and encoder progress termination verified'
+
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -78,6 +85,7 @@ jobs:
             target/video-probes/worker-*.exe
             target/video-probes/worker-generated/*
             target/video-probes/stall-stdout.txt
+            target/video-probes/progress-stdout.txt
             target/video-probes/generated/*
             target/video-probes/build-*.log
           if-no-files-found: warn

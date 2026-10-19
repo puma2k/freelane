@@ -22,14 +22,18 @@
 #include <atomic>
 #include <filesystem>
 #include <fstream>
+#include <cstdlib>
 #include "worker-setup.hpp"
 #include "bgra-nv12.hpp"
+#include "worker-health.hpp"
 using Microsoft::WRL::ComPtr;
 using namespace winrt;
 using namespace winrt::Windows::Graphics::Capture;
 using freelane_video::Bytes;
 using freelane_video::WorkerSetup;
 using Clock=std::chrono::steady_clock;
+inline uint64_t clock_us(){return static_cast<uint64_t>(std::chrono::duration_cast<std::chrono::microseconds>(Clock::now().time_since_epoch()).count());}
+[[noreturn]] inline void terminate_worker(){TerminateProcess(GetCurrentProcess(),3);std::abort();}
 struct WinHandle {
     HANDLE value=nullptr;
     explicit WinHandle(HANDLE h=nullptr):value(h){if(h==INVALID_HANDLE_VALUE)throw hresult_error(HRESULT_FROM_WIN32(GetLastError()));}
@@ -46,11 +50,9 @@ inline uint64_t process_creation(DWORD pid){
 }
 inline void authorize(const WorkerSetup& p){
     HWND window=reinterpret_cast<HWND>(static_cast<uintptr_t>(p.window));DWORD pid=0;
-    freelane_video::require(IsWindow(window)&&IsWindowVisible(window)&&!IsIconic(window),"Target window unavailable");
-    freelane_video::require(GetWindowThreadProcessId(window,&pid)&&pid==p.pid&&process_creation(pid)==p.created,
-        "Target process changed");
-    freelane_video::require(reinterpret_cast<uintptr_t>(GetPropW(window,L"FreeLane.Window.Incarnation.v9"))==p.incarnation,
-        "Target window incarnation changed");
+    freelane_video::target_check(IsWindow(window)&&IsWindowVisible(window)&&!IsIconic(window),freelane_video::TargetFailure::unavailable);
+    freelane_video::target_check(GetWindowThreadProcessId(window,&pid)&&pid==p.pid&&process_creation(pid)==p.created,freelane_video::TargetFailure::identity);
+    freelane_video::target_check(reinterpret_cast<uintptr_t>(GetPropW(window,L"FreeLane.Window.Incarnation.v9"))==p.incarnation,freelane_video::TargetFailure::identity);
 }
 // One overlapped request is owned until completion. Cancellation failure exits
 // ONLY this helper, avoiding reuse/free of kernel-referenced request memory.
@@ -65,7 +67,7 @@ public:
             check_hresult(HRESULT_FROM_WIN32(GetLastError()==ERROR_IO_PENDING?ERROR_SUCCESS:GetLastError()));
             if(WaitForSingleObject(event.value,500)!=WAIT_OBJECT_0){
                 CancelIoEx(port_.value,&request);
-                if(WaitForSingleObject(event.value,500)!=WAIT_OBJECT_0)ExitProcess(3);
+                if(WaitForSingleObject(event.value,500)!=WAIT_OBJECT_0)terminate_worker();
                 // Completion/cancellation has released bytes/request; do not retry a partial record.
                 throw hresult_error(HRESULT_FROM_WIN32(WAIT_TIMEOUT));
             }
@@ -73,4 +75,19 @@ public:
         }
         freelane_video::require(written==bytes.size(),"Partial video port write");
     }
+};
+// Independent watchdog covers both queued-input stalls and a blocked SDK call.
+// Idle heartbeat is 1 FPS, so absence of output for 3 seconds is a failed stream.
+class WorkerWatch {
+    std::mutex mutex_;freelane_video::WorkerProgress progress_{clock_us()};
+    uint64_t pending_=0,pictures_=0;WinHandle stop_{event_handle()};std::thread thread_;
+public:
+    WorkerWatch(){thread_=std::thread([this]{
+        while(WaitForSingleObject(stop_.value,100)==WAIT_TIMEOUT){
+            try{std::lock_guard<std::mutex> lock(mutex_);progress_.observe(pending_,pictures_,clock_us());}
+            catch(...){terminate_worker();}
+        }
+    });}
+    ~WorkerWatch(){SetEvent(stop_.value);thread_.join();}
+    void progress(uint64_t pending,uint64_t pictures){std::lock_guard<std::mutex> lock(mutex_);progress_.observe(pending,pictures,clock_us());pending_=pending;pictures_=pictures;}
 };

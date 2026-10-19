@@ -28,9 +28,10 @@ def main():
     commands = {
         "portable": ["cargo", "test", "--locked", "--workspace", "--no-fail-fast"],
         "arm": [sys.executable, "tests/mcp_real_smoke.py"],
+        "guest": ["cargo", "test", "--locked", "-p", "freelane-agent-protocol", "-p", "freelane-guest-agent"],
     }
     if len(sys.argv) != 2 or sys.argv[1] not in commands:
-        raise SystemExit("Use portable or arm")
+        raise SystemExit("Use portable, arm or guest")
     allowed = set()
     for directory in (ROOT / "tests", ROOT / "crates"):
         for file in directory.rglob("*.rs"):

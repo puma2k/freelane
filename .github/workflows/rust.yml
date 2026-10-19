@@ -69,7 +69,7 @@ jobs:
         with:
           toolchain: 1.99.0
           targets: aarch64-pc-windows-msvc
-      - run: cargo test --locked -p freelane-agent-protocol -p freelane-guest-agent
+      - run: python3 scripts/ci-test-status.py guest
       - run: cargo check --locked -p freelane-guest-agent --target aarch64-pc-windows-msvc
   guest-agent-arm64-build:
     runs-on: ubuntu-latest

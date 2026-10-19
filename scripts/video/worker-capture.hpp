@@ -43,10 +43,10 @@ public:
     HANDLE wake()const{return latest_->wake.value;}
     Bytes take(){
         authorize(target_);Direct3D11CaptureFrame frame{nullptr};
-        {std::lock_guard<std::mutex> lock(latest_->mutex);freelane_video::require(!latest_->closed,"Capture ended");frame=latest_->frame;latest_->frame=nullptr;}
+        {std::lock_guard<std::mutex> lock(latest_->mutex);freelane_video::target_check(!latest_->closed,freelane_video::TargetFailure::unavailable);frame=latest_->frame;latest_->frame=nullptr;}
         if(!frame)return {};
         try {
-            auto content=frame.ContentSize();freelane_video::require(content.Width==int(source_width_)&&content.Height==int(source_height_),"Resize requires a new generation");
+            auto content=frame.ContentSize();freelane_video::target_check(content.Width==int(source_width_)&&content.Height==int(source_height_),freelane_video::TargetFailure::resize);
             auto access=frame.Surface().as<::Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess>();
             ComPtr<ID3D11Texture2D> texture;check_hresult(access->GetInterface(__uuidof(ID3D11Texture2D),reinterpret_cast<void**>(texture.GetAddressOf())));
             D3D11_TEXTURE2D_DESC desc{};texture->GetDesc(&desc);
