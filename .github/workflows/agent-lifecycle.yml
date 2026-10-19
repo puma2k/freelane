@@ -1,9 +1,9 @@
 name: Windows agent lifecycle
 on:
   push:
-    paths: ['scripts/install-windows-agent.ps1', 'scripts/build-windows-video-helper.ps1', 'scripts/video/**', 'tests/agent-lifecycle.ps1', 'crates/guest-agent/**', 'crates/agent-protocol/**', 'Cargo.lock', '.github/workflows/agent-lifecycle.yml']
+    paths: ['scripts/install-windows-agent.ps1', 'scripts/build-windows-video-helper.ps1', 'scripts/build-windows-agent-native.ps1', 'scripts/setup-windows-agent.ps1', 'scripts/video/**', 'tests/agent-lifecycle.ps1', 'crates/guest-agent/**', 'crates/agent-protocol/**', 'Cargo.lock', '.github/workflows/agent-lifecycle.yml']
   pull_request:
-    paths: ['scripts/install-windows-agent.ps1', 'scripts/build-windows-video-helper.ps1', 'scripts/video/**', 'tests/agent-lifecycle.ps1', 'crates/guest-agent/**', 'crates/agent-protocol/**', 'Cargo.lock', '.github/workflows/agent-lifecycle.yml']
+    paths: ['scripts/install-windows-agent.ps1', 'scripts/build-windows-video-helper.ps1', 'scripts/build-windows-agent-native.ps1', 'scripts/setup-windows-agent.ps1', 'scripts/video/**', 'tests/agent-lifecycle.ps1', 'crates/guest-agent/**', 'crates/agent-protocol/**', 'Cargo.lock', '.github/workflows/agent-lifecycle.yml']
 permissions:
   contents: read
 jobs:
@@ -35,3 +35,35 @@ jobs:
       - name: Verify per-user agent lifecycle with a real ARM64 artifact
         shell: pwsh
         run: ./tests/agent-lifecycle.ps1 -AgentPath ./target/aarch64-pc-windows-msvc/debug/freelane-guest-agent.exe -NativeAgentPath ./target/debug/freelane-guest-agent.exe -VideoHelperPath ./target/guest-agent-arm64/freelane-video-helper.exe
+  native-package:
+    runs-on: windows-11-arm
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: 1.99.0
+          targets: aarch64-pc-windows-msvc
+      - name: Build real release archive
+        shell: pwsh
+        run: ./scripts/build-windows-agent-native.ps1 -Version ci
+      - name: Verify extracted package setup and real helper
+        shell: pwsh
+        run: |
+          $ErrorActionPreference='Stop'
+          Expand-Archive -LiteralPath target/packages/FreeLane-ci-windows-arm64-agent.zip -DestinationPath target/package-check
+          $helper=Join-Path $PWD 'target/package-check/freelane-video-helper.exe'
+          $process=Start-Process $helper -ArgumentList @('--owned-self-test',"`"$PWD/target/package-helper-probe`"") -PassThru -NoNewWindow
+          if (!$process.WaitForExit(60000)) {$process.Kill();throw 'Packaged helper timed out'}
+          if ($process.ExitCode -ne 0) {throw 'Packaged helper rejected owned capture'}
+          & ./target/package-check/setup-windows-agent.ps1
+          & ./target/package-check/install-windows-agent.ps1 -Action Uninstall
+          Write-Output '::notice title=Native package::Extracted ARM64 package setup, helper capture and uninstall passed'
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: verified-windows-arm64-package
+          path: target/packages/*
+          if-no-files-found: warn
