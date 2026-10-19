@@ -11,6 +11,12 @@ $root=Join-Path ([IO.Path]::GetTempPath()) ('freelane-lifecycle-'+[Guid]::NewGui
 New-Item -ItemType Directory -Path $root | Out-Null
 $first=Join-Path $root 'first.exe';Copy-Item -LiteralPath $AgentPath -Destination $first
 $hash=(Get-FileHash -LiteralPath $first -Algorithm SHA256).Hash
+# Real ARM64 PE fixtures with distinct hashes; install tests never execute these helper fixtures.
+$helperFirst=Join-Path $root 'helper-first.exe';[IO.File]::WriteAllBytes($helperFirst,([IO.File]::ReadAllBytes($first)+[byte[]](7,8)))
+$helperHash=(Get-FileHash -LiteralPath $helperFirst -Algorithm SHA256).Hash.ToLowerInvariant()
+$helperSecond=Join-Path $root 'helper-second.exe';[IO.File]::WriteAllBytes($helperSecond,([IO.File]::ReadAllBytes($first)+[byte[]](7,8,9)))
+$helperSecondHash=(Get-FileHash -LiteralPath $helperSecond -Algorithm SHA256).Hash.ToLowerInvariant()
+function HelperFile($hash) {Join-Path $directory ('freelane-video-helper-'+$hash+'.exe')}
 function Assert($condition,$name) {if (!$condition) {throw "FAILED: $name"}}
 function Refused([scriptblock]$call,$name) {$failed=$false;try {& $call | Out-Null} catch {$failed=$true};Assert $failed $name}
 function ProbeAgent($settingsPath) {
@@ -39,9 +45,10 @@ try {
  Assert (!(Test-Path -LiteralPath (Join-Path $directory 'freelane-guest-agent.exe'))) 'invalid source never published'
  $phase='persisted outbox install'
  $outbox=Join-Path $root 'Tài liệu xuất';New-Item -ItemType Directory -Path $outbox | Out-Null
- & $script -Action Install -AgentPath $first -ExpectedSha256 $hash -OutboxDirectory $outbox
+ & $script -Action Install -AgentPath $first -ExpectedSha256 $hash -OutboxDirectory $outbox -VideoHelperPath $helperFirst -ExpectedVideoSha256 $helperHash
  $settings=Get-Content -LiteralPath (Join-Path $directory 'agent-install.json') -Raw | ConvertFrom-Json
  Assert ($settings.transfer.outbox -eq $outbox) 'outbox persisted'
+ Assert ($settings.video_sha256 -eq $helperHash -and (Get-FileHash -LiteralPath (HelperFile $helperHash)).Hash.ToLowerInvariant() -eq $helperHash) 'verified paired helper installed'
  Assert (!$settings.transfer.inbox) 'inbox remains disabled'
  $features=ProbeAgent (Join-Path $directory 'agent-install.json')
  Assert ($features -contains 'file_export' -and $features -notcontains 'file_transfer') 'native startup enables only selected outbox'
@@ -52,10 +59,11 @@ try {
  $second=Join-Path $root 'second.exe';[IO.File]::WriteAllBytes($second,([IO.File]::ReadAllBytes($first)+[byte[]](1,2,3)))
  $secondHash=(Get-FileHash -LiteralPath $second).Hash
  $phase='verified update'
- & $script -Action Update -AgentPath $second -ExpectedSha256 $secondHash
+ & $script -Action Update -AgentPath $second -ExpectedSha256 $secondHash -VideoHelperPath $helperSecond -ExpectedVideoSha256 $helperSecondHash
  Assert ((Get-FileHash -LiteralPath $dest).Hash -eq $secondHash) 'update published'
  $settings=Get-Content -LiteralPath (Join-Path $directory 'agent-install.json') -Raw | ConvertFrom-Json
  Assert ($settings.transfer.outbox -eq $outbox) 'update preserves outbox'
+ Assert ($settings.video_sha256 -eq $helperSecondHash -and $settings.backup_video_sha256 -eq $helperHash) 'update retains verified paired rollback helper'
  $phase='configure explicit sharing selections'
  $inbox=Join-Path $root 'Inbox';New-Item -ItemType Directory -Path $inbox | Out-Null
  & $script -Action Configure -InboxDirectory $inbox -OutboxDirectory ''
@@ -78,6 +86,7 @@ try {
  Assert ((Get-FileHash -LiteralPath $dest).Hash -eq $hash) 'rollback restored verified old binary'
  $settings=Get-Content -LiteralPath (Join-Path $directory 'agent-install.json') -Raw | ConvertFrom-Json
  Assert ($settings.transfer.inbox -eq $inbox -and !$settings.transfer.outbox) 'rollback does not resurrect revoked outbox access'
+ Assert ($settings.video_sha256 -eq $helperHash) 'rollback restores paired helper'
  $manifest=Join-Path $directory 'agent-install.json';$saved=[IO.File]::ReadAllText($manifest)
  $phase='automatic update failure recovery'
  $held=[IO.File]::Open($manifest,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
@@ -85,7 +94,12 @@ try {
  Assert ((Get-FileHash -LiteralPath $dest).Hash -eq $hash) 'failed update restored original executable'
  Assert ([IO.File]::ReadAllText($manifest) -eq $saved) 'failed update preserved manifest'
  Assert (Test-Path -LiteralPath $shortcut) 'failed update preserved startup'
- $phase='uninstall lock preservation'
+ $phase='paired helper corruption refusal'
+ [IO.File]::WriteAllBytes((HelperFile $helperHash),[byte[]](1,2,3))
+ Refused {& $script -Action Uninstall} 'modified helper preserved on uninstall'
+ Refused {& $script -Action Update -AgentPath $second -ExpectedSha256 $secondHash} 'modified helper preserved on update'
+ [IO.File]::WriteAllBytes((HelperFile $helperHash),[IO.File]::ReadAllBytes($helperFirst))
+ $phase='uninstall lock preservation' 
  $held=[IO.File]::Open($dest,[IO.FileMode]::Open,[IO.FileAccess]::Read,[IO.FileShare]::Read)
  try {Refused {& $script -Action Uninstall} 'locked executable uninstall refused'} finally {$held.Dispose()}
  Assert (Test-Path -LiteralPath $shortcut) 'failed uninstall preserved shortcut'
@@ -102,6 +116,8 @@ try {
  $phase='verified uninstall'
  & $script -Action Uninstall
  Assert (!(Test-Path -LiteralPath $dest)) 'uninstalled executable'
+ Assert (!(Test-Path -LiteralPath (HelperFile $helperHash))) 'uninstalled current managed helper'
+ Assert (Test-Path -LiteralPath (HelperFile $helperSecondHash)) 'retained backup helper'
  Assert (!(Test-Path -LiteralPath $shortcut)) 'uninstalled shortcut'
  Assert ([IO.File]::ReadAllText($unrelated) -eq 'preserve') 'unrelated file preserved'
  Assert ((Test-Path -LiteralPath $outbox) -and (Test-Path -LiteralPath $inbox)) 'selected transfer folders preserved'

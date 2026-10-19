@@ -188,10 +188,7 @@ fn video_session(
     SESSION.get_or_init(|| {
         let helper = std::env::current_exe()
             .ok()
-            .and_then(|p| {
-                p.parent()
-                    .map(|parent| parent.join("freelane-video-helper.exe"))
-            })
+            .and_then(|path| crate::settings::video_helper(&path).ok())
             .unwrap_or_default();
         std::sync::Mutex::new(crate::video::Session::new(
             crate::video_process::ProcessEncoder::new(
