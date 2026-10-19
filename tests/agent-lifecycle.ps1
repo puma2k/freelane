@@ -1,4 +1,4 @@
-param([Parameter(Mandatory=$true)][string]$AgentPath,[Parameter(Mandatory=$true)][string]$NativeAgentPath)
+param([Parameter(Mandatory=$true)][string]$AgentPath,[Parameter(Mandatory=$true)][string]$NativeAgentPath,[string]$VideoHelperPath)
 $ErrorActionPreference='Stop'
 $phase='initial checksum'
 $repo=Split-Path $PSScriptRoot
@@ -12,9 +12,10 @@ New-Item -ItemType Directory -Path $root | Out-Null
 $first=Join-Path $root 'first.exe';Copy-Item -LiteralPath $AgentPath -Destination $first
 $hash=(Get-FileHash -LiteralPath $first -Algorithm SHA256).Hash
 # Real ARM64 PE fixtures with distinct hashes; install tests never execute these helper fixtures.
-$helperFirst=Join-Path $root 'helper-first.exe';[IO.File]::WriteAllBytes($helperFirst,([IO.File]::ReadAllBytes($first)+[byte[]](7,8)))
+$helperBytes=if ($VideoHelperPath) {[IO.File]::ReadAllBytes((Resolve-Path -LiteralPath $VideoHelperPath).Path)} else {[IO.File]::ReadAllBytes($first)}
+$helperFirst=Join-Path $root 'helper-first.exe';[IO.File]::WriteAllBytes($helperFirst,($helperBytes+[byte[]](7,8)))
 $helperHash=(Get-FileHash -LiteralPath $helperFirst -Algorithm SHA256).Hash.ToLowerInvariant()
-$helperSecond=Join-Path $root 'helper-second.exe';[IO.File]::WriteAllBytes($helperSecond,([IO.File]::ReadAllBytes($first)+[byte[]](7,8,9)))
+$helperSecond=Join-Path $root 'helper-second.exe';[IO.File]::WriteAllBytes($helperSecond,($helperBytes+[byte[]](7,8,9)))
 $helperSecondHash=(Get-FileHash -LiteralPath $helperSecond -Algorithm SHA256).Hash.ToLowerInvariant()
 function HelperFile($hash) {Join-Path $directory ('freelane-video-helper-'+$hash+'.exe')}
 function Assert($condition,$name) {if (!$condition) {throw "FAILED: $name"}}

@@ -4,12 +4,16 @@ param(
  [ValidateSet('Install','Update','Rollback','Uninstall','Configure')][string]$Action='Install',
  [string]$AgentPath,
  [string]$ExpectedSha256,
+ [string]$VideoHelperPath,
+ [string]$ExpectedVideoSha256,
  [AllowEmptyString()][string]$InboxDirectory,
  [AllowEmptyString()][string]$OutboxDirectory
 )
 $ErrorActionPreference='Stop'
 $inboxRequested=$PSBoundParameters.ContainsKey('InboxDirectory')
 $outboxRequested=$PSBoundParameters.ContainsKey('OutboxDirectory')
+$videoRequested=$PSBoundParameters.ContainsKey('VideoHelperPath') -or $PSBoundParameters.ContainsKey('ExpectedVideoSha256')
+if ($videoRequested -and $Action -notin @('Install','Update')) {throw 'Video helper can be supplied only during Install or Update'}
 if (($inboxRequested -or $outboxRequested) -and $Action -in @('Rollback','Uninstall')) {throw 'Transfer folders can be changed only during Install, Update or Configure'}
 if ($Action -eq 'Configure' -and !$inboxRequested -and !$outboxRequested) {throw 'Select a transfer folder or pass an empty value to disable it'}
 function ValidStoredRoot($path) {
@@ -62,12 +66,23 @@ function Arm64([string]$path) {
   if ($reader.ReadUInt32() -ne 0x4550 -or $reader.ReadUInt16() -ne 0xaa64) {throw 'Supply the Windows ARM64 agent executable'}
  } finally {$stream.Dispose()}
 }
+function HelperPath([string]$hash) {return (Join-Path $directory ('freelane-video-helper-'+$hash+'.exe'))}
+function VerifiedHelper([string]$hash) {
+ if (!$hash -or $hash -notmatch '^[0-9a-f]{64}$') {throw 'Invalid helper checksum'}
+ $path=HelperPath $hash
+ PlainFile $path;Arm64 $path
+ if ((Hash $path) -ne $hash) {throw 'Installed helper changed; preserve and inspect it before continuing'}
+ return $path
+}
 function ReadManifest {
  PlainFile $manifestPath
  if ((Get-Item -LiteralPath $manifestPath).Length -gt 4096) {throw 'Invalid installation manifest'}
  $value=[IO.File]::ReadAllText($manifestPath) | ConvertFrom-Json
  if ($value.schema -ne 1 -or $value.sha256 -notmatch '^[0-9a-f]{64}$') {throw 'Invalid installation manifest'}
  if ($value.backup -and ($value.backup -notmatch '^agent-backup-[0-9a-f]{32}\.exe$' -or $value.backup_sha256 -notmatch '^[0-9a-f]{64}$')) {throw 'Invalid backup metadata'}
+ foreach ($field in @('video_sha256','backup_video_sha256')) {
+  if ($null -ne $value.$field -and ($value.$field -isnot [string] -or $value.$field -notmatch '^[0-9a-f]{64}$')) {throw 'Invalid helper metadata'}
+ }
  if ($value.PSObject.Properties.Name -contains 'transfer') {
   if (!$value.transfer -or $value.transfer -isnot [pscustomobject]) {throw 'Invalid saved transfer settings'}
   foreach ($property in $value.transfer.PSObject.Properties) {
@@ -79,6 +94,7 @@ function ReadManifest {
 }
 function ManagedInstallation {
  $value=ReadManifest
+ if ($value.video_sha256) {$null=VerifiedHelper $value.video_sha256}
  PlainFile $destination
  if ((Hash $destination) -ne $value.sha256) {throw 'Installed agent changed; preserve and inspect it before updating or uninstalling'}
  PlainFile $shortcut
@@ -89,6 +105,10 @@ function ManagedInstallation {
   try {$path=$process.Path} catch {throw 'Cannot inspect running agent; stop it before continuing'}
   if (!$path -or $path -ieq $destination) {throw 'Stop the installed agent in your user session before continuing'}
  }
+ foreach ($process in @(Get-Process -Name 'freelane-video-helper*' -ErrorAction SilentlyContinue)) {
+  try {$path=$process.Path} catch {throw 'Cannot inspect running helper; stop it before continuing'}
+  if (!$path -or ($value.video_sha256 -and $path -ieq (HelperPath $value.video_sha256))) {throw 'Stop the installed video helper in your user session before continuing'}
+ }
  return $value
 }
 if ($Action -in @('Install','Update')) {
@@ -98,6 +118,14 @@ if ($Action -in @('Install','Update')) {
  if ([IO.Path]::GetExtension($source) -ine '.exe') {throw 'Supply the ARM64 guest-agent .exe'}
  Arm64 $source
  if ((Hash $source) -ne $ExpectedSha256.ToLowerInvariant()) {throw 'Agent checksum verification failed; installation refused'}
+ if ($videoRequested) {
+  if (!$VideoHelperPath -or $ExpectedVideoSha256 -notmatch '^[0-9a-fA-F]{64}$') {throw 'Supply VideoHelperPath and trusted ExpectedVideoSha256 together'}
+  $helperSource=(Resolve-Path -LiteralPath $VideoHelperPath).Path
+  PlainFile $helperSource;Arm64 $helperSource
+  $ExpectedVideoSha256=$ExpectedVideoSha256.ToLowerInvariant()
+  if ((Hash $helperSource) -ne $ExpectedVideoSha256) {throw 'Video helper checksum verification failed; installation refused'}
+ }
+
 }
 if (!(Test-Path -LiteralPath $directory)) {
  if ($Action -ne 'Install') {throw 'No managed agent installation found'}
@@ -108,6 +136,7 @@ if (!$item.PSIsContainer -or ($item.Attributes -band [IO.FileAttributes]::Repars
 $lockPath=Join-Path $directory 'agent-install.lock'
 if (Test-Path -LiteralPath $lockPath) {PlainFile $lockPath}
 $lock=[IO.File]::Open($lockPath,[IO.FileMode]::OpenOrCreate,[IO.FileAccess]::ReadWrite,[IO.FileShare]::None)
+$helperStage=$null;$createdHelper=$null;$helperCommitted=$false
 $stage=$null;$stageManifest=$null;$stageShortcut=$null;$backup=$null;$manifestBackup=$null;$published=$false;$oldManifest=$null;$installedShortcut=$false
 try {
  if ($Action -eq 'Install') {
@@ -134,19 +163,24 @@ try {
   $removedAgent=Join-Path $directory ('agent-removed-'+$id+'.exe')
   $removedManifest=Join-Path $directory ('manifest-removed-'+$id+'.json')
   $removedShortcut=Join-Path ([IO.Path]::GetDirectoryName($shortcut)) ('FreeLane-removed-'+$id+'.lnk')
+  $removedHelper=$null;$currentHelper=$null;$movedHelper=$false
+  if ($oldManifest.video_sha256) {$currentHelper=VerifiedHelper $oldManifest.video_sha256;$removedHelper=Join-Path $directory ('helper-removed-'+$id+'.exe')}
   $movedAgent=$false;$movedShortcut=$false
   try {
    [IO.File]::Move($destination,$removedAgent);$movedAgent=$true
+   if ($currentHelper) {[IO.File]::Move($currentHelper,$removedHelper);$movedHelper=$true}
    [IO.File]::Move($shortcut,$removedShortcut);$movedShortcut=$true
    [IO.File]::Move($manifestPath,$removedManifest)
   } catch {
    $failure=$_
    # Move refuses an existing replacement; never overwrite another user's new file.
    if ($movedShortcut) {[IO.File]::Move($removedShortcut,$shortcut)}
+   if ($movedHelper) {[IO.File]::Move($removedHelper,$currentHelper)}
    if ($movedAgent) {[IO.File]::Move($removedAgent,$destination)}
    throw $failure
   }
-  foreach ($removed in @($removedAgent,$removedShortcut,$removedManifest)) {
+  foreach ($removed in @($removedAgent,$removedShortcut,$removedManifest,$removedHelper)) {
+   if (!$removed) {continue}
    try {Remove-Item -LiteralPath $removed} catch {Write-Output 'Uninstalled; a quarantined file is retained because Windows refused cleanup.'}
   }
   Write-Output 'Uninstalled managed agent and Startup shortcut. Backups and other user files are preserved.'
@@ -162,11 +196,28 @@ try {
  }
  $expected=$ExpectedSha256.ToLowerInvariant()
  $id=[Guid]::NewGuid().ToString('N')
+ $selectedVideoHash=$null
+ if ($Action -eq 'Rollback') {$selectedVideoHash=$oldManifest.backup_video_sha256}
+ elseif ($videoRequested) {$selectedVideoHash=$ExpectedVideoSha256}
+ elseif ($oldManifest) {$selectedVideoHash=$oldManifest.video_sha256}
+ if ($selectedVideoHash) {
+  $helperDestination=HelperPath $selectedVideoHash
+  if (Test-Path -LiteralPath $helperDestination) {
+   if (!$oldManifest -or ($selectedVideoHash -ne $oldManifest.video_sha256 -and $selectedVideoHash -ne $oldManifest.backup_video_sha256)) {throw 'Existing unowned helper preserved; inspect before continuing'}
+   $null=VerifiedHelper $selectedVideoHash
+  } else {
+   if (!$videoRequested -or $Action -eq 'Rollback') {throw 'Verified paired helper is missing'}
+   $helperStage=Join-Path $directory ('helper-stage-'+$id+'.exe')
+   [IO.File]::Copy($helperSource,$helperStage,$false);PlainFile $helperStage;Arm64 $helperStage
+   if ((Hash $helperStage) -ne $selectedVideoHash) {throw 'Staged helper checksum verification failed'}
+   [IO.File]::Move($helperStage,$helperDestination);$createdHelper=$helperDestination
+  }
+ }
  $stage=Join-Path $directory ('agent-stage-'+$id+'.exe')
  [IO.File]::Copy($source,$stage,$false)
  PlainFile $stage;Arm64 $stage
  if ((Hash $stage) -ne $expected) {throw 'Staged checksum verification failed; installation refused'}
- $newManifest=@{schema=1;sha256=$expected;backup=$null;backup_sha256=$null;transfer=(TransferSelections $oldManifest)}
+ $newManifest=@{schema=1;sha256=$expected;backup=$null;backup_sha256=$null;video_sha256=$selectedVideoHash;backup_video_sha256=$null;transfer=(TransferSelections $oldManifest)}
  if ($oldManifest) {
   # Recheck immediately before replacement; File.Replace retains the actual old bytes.
   $checked=ManagedInstallation
@@ -175,7 +226,7 @@ try {
   [IO.File]::Replace($stage,$destination,$backup)
   $published=$true
   if ((Hash $backup) -ne $oldManifest.sha256) {throw 'Installation changed during replacement; restoring preserved bytes'}
-  $newManifest.backup=$backupName;$newManifest.backup_sha256=$oldManifest.sha256
+  $newManifest.backup=$backupName;$newManifest.backup_sha256=$oldManifest.sha256;$newManifest.backup_video_sha256=$oldManifest.video_sha256
  } else {
   $stageShortcut=Join-Path ([IO.Path]::GetDirectoryName($shortcut)) ('FreeLane-stage-'+$id+'.lnk')
   $link=(New-Object -ComObject WScript.Shell).CreateShortcut($stageShortcut)
@@ -190,7 +241,7 @@ try {
   $manifestBackup=Join-Path $directory ('manifest-backup-'+$id+'.json')
   [IO.File]::Replace($stageManifest,$manifestPath,$manifestBackup)
  } else {[IO.File]::Move($stageManifest,$manifestPath)}
- $published=$false
+ $published=$false;$helperCommitted=$true
  Write-Output "Agent $Action complete. Sign in again to start the per-user agent. No service or elevation was used."
 } catch {
  $failure=$_
@@ -206,6 +257,10 @@ try {
  }
  throw $failure
 } finally {
- foreach ($path in @($stage,$stageManifest,$stageShortcut,$manifestBackup)) {if ($path -and (Test-Path -LiteralPath $path)) {Remove-Item -LiteralPath $path}}
+ if ($createdHelper -and !$helperCommitted -and (Test-Path -LiteralPath $createdHelper)) {
+  PlainFile $createdHelper
+  if ((Hash $createdHelper) -eq $selectedVideoHash) {Remove-Item -LiteralPath $createdHelper}
+ }
+ foreach ($path in @($stage,$stageManifest,$stageShortcut,$manifestBackup,$helperStage)) {if ($path -and (Test-Path -LiteralPath $path)) {Remove-Item -LiteralPath $path}}
  $lock.Dispose()
 }

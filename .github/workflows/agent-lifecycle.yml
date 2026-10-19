@@ -1,9 +1,9 @@
 name: Windows agent lifecycle
 on:
   push:
-    paths: ['scripts/install-windows-agent.ps1', 'tests/agent-lifecycle.ps1', 'crates/guest-agent/**', 'crates/agent-protocol/**', 'Cargo.lock', '.github/workflows/agent-lifecycle.yml']
+    paths: ['scripts/install-windows-agent.ps1', 'scripts/build-windows-video-helper.ps1', 'scripts/video/**', 'tests/agent-lifecycle.ps1', 'crates/guest-agent/**', 'crates/agent-protocol/**', 'Cargo.lock', '.github/workflows/agent-lifecycle.yml']
   pull_request:
-    paths: ['scripts/install-windows-agent.ps1', 'tests/agent-lifecycle.ps1', 'crates/guest-agent/**', 'crates/agent-protocol/**', 'Cargo.lock', '.github/workflows/agent-lifecycle.yml']
+    paths: ['scripts/install-windows-agent.ps1', 'scripts/build-windows-video-helper.ps1', 'scripts/video/**', 'tests/agent-lifecycle.ps1', 'crates/guest-agent/**', 'crates/agent-protocol/**', 'Cargo.lock', '.github/workflows/agent-lifecycle.yml']
 permissions:
   contents: read
 jobs:
@@ -29,6 +29,9 @@ jobs:
           exit $testExit
       - run: cargo build --locked -p freelane-guest-agent
       - run: cargo build --locked -p freelane-guest-agent --target aarch64-pc-windows-msvc
+      - name: Build packaged ARM64 helper with Windows SDK
+        shell: pwsh
+        run: ./scripts/build-windows-video-helper.ps1
       - name: Verify per-user agent lifecycle with a real ARM64 artifact
         shell: pwsh
-        run: ./tests/agent-lifecycle.ps1 -AgentPath ./target/aarch64-pc-windows-msvc/debug/freelane-guest-agent.exe -NativeAgentPath ./target/debug/freelane-guest-agent.exe
+        run: ./tests/agent-lifecycle.ps1 -AgentPath ./target/aarch64-pc-windows-msvc/debug/freelane-guest-agent.exe -NativeAgentPath ./target/debug/freelane-guest-agent.exe -VideoHelperPath ./target/guest-agent-arm64/freelane-video-helper.exe
