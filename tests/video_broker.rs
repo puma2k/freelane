@@ -521,3 +521,164 @@ fn accept_video(listener: &UnixListener) -> UnixStream {
         }
     }
 }
+
+#[allow(dead_code)]
+#[path = "../crates/guest-agent/src/video.rs"]
+mod guest_policy;
+struct PolicyEncoder;
+impl guest_policy::Encoder for PolicyEncoder {
+    fn available(&self) -> bool {
+        true
+    }
+    fn authorize(&mut self, _: &WindowTarget) -> std::io::Result<()> {
+        Ok(())
+    }
+    fn start(
+        &mut self,
+        _: &freelane_agent_protocol::video_control::Parameters,
+    ) -> std::io::Result<()> {
+        Ok(())
+    }
+    fn running(&mut self) -> std::io::Result<bool> {
+        Ok(true)
+    }
+    fn stop(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+    fn keyframe(&mut self) -> std::io::Result<()> {
+        Ok(())
+    }
+}
+#[test]
+fn successive_host_sessions_satisfy_production_guest_retirement_policy() {
+    use freelane::video::LiveSession;
+    use freelane_agent_protocol::{
+        video_control::{Operation, Reply},
+        Action, Outcome,
+    };
+    use std::sync::{atomic::Ordering, Arc};
+    let f = Fixture::new();
+    let control = UnixListener::bind(f.dir.join("agent.sock")).unwrap();
+    let video = f.listener.try_clone().unwrap();
+    let owner = thread::spawn(move || {
+        let mut attempts = Vec::new();
+        for _ in 0..2 {
+            let mut parameters = None;
+            while parameters.is_none() {
+                serve_video_control(&control, |action| match action {
+                    Action::Ping => video_info(),
+                    Action::Video {
+                        operation: Operation::Start { parameters: p },
+                    } => {
+                        let peer = accept_video(&video);
+                        parameters = Some((p.clone(), peer));
+                        Outcome::Video {
+                            report: Reply::Started { parameters: p },
+                        }
+                    }
+                    _ => panic!("Unexpected startup"),
+                });
+            }
+            let (p, _peer) = parameters.unwrap();
+            serve_video_control(&control, |action| {
+                assert_eq!(
+                    action,
+                    Action::Video {
+                        operation: Operation::Stop { binding: p.binding }
+                    }
+                );
+                Outcome::Video {
+                    report: Reply::Stopped { binding: p.binding },
+                }
+            });
+            attempts.push(p);
+        }
+        attempts
+    });
+    for _ in 0..2 {
+        let live = LiveSession::start(&f.config, target(), Arc::new(|| {})).unwrap();
+        let done = live.retirement();
+        drop(live);
+        wait_until(|| done.load(Ordering::Acquire));
+    }
+    let mut guest = guest_policy::Session::new(PolicyEncoder);
+    for parameters in owner.join().unwrap() {
+        let binding = parameters.binding;
+        guest
+            .action(&Operation::Start { parameters })
+            .expect("Fresh host session must satisfy real guest restart policy");
+        guest.action(&Operation::Stop { binding }).unwrap();
+    }
+}
+#[test]
+fn silent_open_serial_socket_expires_after_established_stream() {
+    use freelane::video::LiveSession;
+    use freelane_agent_protocol::{
+        video_control::{Operation, Reply},
+        Action, Outcome,
+    };
+    use std::sync::Arc;
+    let f = Fixture::new();
+    let control = UnixListener::bind(f.dir.join("agent.sock")).unwrap();
+    let video = f.listener.try_clone().unwrap();
+    let owner = thread::spawn(move || {
+        let mut active = None;
+        while active.is_none() {
+            serve_video_control(&control, |action| match action {
+                Action::Ping => video_info(),
+                Action::Video {
+                    operation: Operation::Start { parameters },
+                } => {
+                    let mut peer = accept_video(&video);
+                    let mut cfg = config();
+                    cfg.binding = parameters.binding;
+                    write_record(&mut peer, &cfg).unwrap();
+                    let mut image = frame(1, true);
+                    image.binding = parameters.binding;
+                    write_record(&mut peer, &image).unwrap();
+                    active = Some((parameters.binding, peer));
+                    Outcome::Video {
+                        report: Reply::Started { parameters },
+                    }
+                }
+                _ => panic!("Unexpected operation"),
+            });
+        }
+        let (binding, _peer) = active.unwrap();
+        serve_video_control(&control, |action| {
+            assert_eq!(
+                action,
+                Action::Video {
+                    operation: Operation::Stop { binding }
+                }
+            );
+            Outcome::Video {
+                report: Reply::Stopped { binding },
+            }
+        });
+    });
+    let live = LiveSession::start(&f.config, target(), Arc::new(|| {})).unwrap();
+    wait_until(|| live.configuration().is_some());
+    assert!(!live.ended());
+    thread::sleep(Duration::from_millis(4200));
+    let expired = live.ended();
+    drop(live);
+    owner.join().unwrap();
+    assert!(
+        expired,
+        "A silent but open QEMU transport must not retain frozen video forever"
+    );
+}
+#[test]
+fn unchanged_content_heartbeats_keep_an_open_stream_healthy() {
+    let f = Fixture::new();
+    let (broker, mut peer) = f.connect();
+    write_record(&mut peer, &config()).unwrap();
+    for sequence in 1..=6 {
+        // Same encoded pixels; only wire sequence/time advance, like idle heartbeat.
+        write_record(&mut peer, &frame(sequence, true)).unwrap();
+        wait_until(|| broker.pop().is_some());
+        thread::sleep(Duration::from_millis(750));
+        assert!(!broker.silent_for(Duration::from_secs(4)));
+    }
+}

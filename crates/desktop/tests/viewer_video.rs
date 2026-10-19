@@ -20,14 +20,15 @@ fn fallback_does_not_retry_until_selection_or_explicit_retry_changes() {
     let mut video = ViewerVideo::default();
     video.requested = true;
     video.maintain(Some(target(1)), false);
-    assert_eq!(video.begin(), Some(target(1)));
+    let attempt = video.begin().unwrap();
+    assert_eq!(attempt.target, target(1));
     assert!(video.begin().is_none());
-    video.failed(&target(1), "No helper".into());
+    video.failed(&attempt, "No helper".into());
     assert!(video.begin().is_none());
     video.maintain(Some(target(2)), false);
-    assert_eq!(video.begin(), Some(target(2)));
+    assert_eq!(video.begin().map(|attempt| attempt.target), Some(target(2)));
     video.invalidate();
-    assert_eq!(video.begin(), Some(target(2)));
+    assert_eq!(video.begin().map(|attempt| attempt.target), Some(target(2)));
 }
 #[test]
 fn minimization_and_retirement_block_new_video_start() {
@@ -45,7 +46,7 @@ fn minimization_and_retirement_block_new_video_start() {
     assert!(video.begin().is_none());
     pending.store(true, Ordering::Release);
     video.maintain(Some(target(1)), false);
-    assert_eq!(video.begin(), Some(target(1)));
+    assert_eq!(video.begin().map(|attempt| attempt.target), Some(target(1)));
     video.requested = false;
     video.invalidate();
     assert!(video.begin().is_none());
@@ -55,10 +56,23 @@ fn stale_failure_cannot_replace_selected_status() {
     let mut video = ViewerVideo::default();
     video.requested = true;
     video.maintain(Some(target(1)), false);
-    video.begin();
+    let old = video.begin().unwrap();
     video.maintain(Some(target(2)), false);
-    video.begin();
-    video.failed(&target(2), "Busy".into());
-    video.failed(&target(1), "Stale failure".into());
+    let current = video.begin().unwrap();
+    video.failed(&current, "Busy".into());
+    video.failed(&old, "Stale failure".into());
     assert_eq!(video.status(), "Busy");
+}
+#[test]
+fn invalidating_and_restarting_same_target_rejects_previous_attempt() {
+    let mut video = ViewerVideo::default();
+    video.requested = true;
+    video.maintain(Some(target(1)), false);
+    let old = video.begin().unwrap();
+    video.invalidate();
+    let current = video.begin().unwrap();
+    video.failed(&current, "Current".into());
+    video.failed(&old, "Obsolete".into());
+    assert_eq!(video.status(), "Current");
+    assert_ne!(old, current);
 }

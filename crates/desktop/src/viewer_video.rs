@@ -11,10 +11,16 @@ use std::{
     },
     time::{Duration, Instant},
 };
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Attempt {
+    pub target: WindowTarget,
+    revision: u64,
+}
 pub struct ViewerVideo {
     pub requested: bool,
     target: Option<WindowTarget>,
-    attempted: Option<WindowTarget>,
+    attempted: Option<Attempt>,
+    revision: u64,
     minimized: bool,
     session: Option<LiveSession>,
     retiring: Option<Arc<AtomicBool>>,
@@ -33,6 +39,7 @@ impl Default for ViewerVideo {
             requested: Self::supported(),
             target: None,
             attempted: None,
+            revision: 0,
             minimized: false,
             session: None,
             retiring: None,
@@ -74,26 +81,35 @@ impl ViewerVideo {
             self.status = "Video unavailable; using snapshots".into();
         }
     }
-    pub fn begin(&mut self) -> Option<WindowTarget> {
+    pub fn begin(&mut self) -> Option<Attempt> {
         if !self.requested || self.minimized || self.session.is_some() || self.retiring.is_some() {
             return None;
         }
         let target = self.target.as_ref()?;
-        if self.attempted.as_ref() == Some(target) {
+        if self.attempted.is_some() {
             return None;
         }
-        self.attempted = Some(target.clone());
-        Some(target.clone())
+        let attempt = Attempt {
+            target: target.clone(),
+            revision: self.revision,
+        };
+        self.attempted = Some(attempt.clone());
+        Some(attempt)
     }
-    pub fn failed(&mut self, target: &WindowTarget, error: String) {
-        if self.target.as_ref() == Some(target) && self.attempted.as_ref() == Some(target) {
+    pub fn failed(&mut self, attempt: &Attempt, error: String) {
+        if self.target.as_ref() == Some(&attempt.target) && self.attempted.as_ref() == Some(attempt)
+        {
             self.status = error;
         }
     }
-    pub fn accept(&mut self, target: &WindowTarget, result: Result<LiveSession, String>) {
+    pub fn accept(&mut self, attempt: &Attempt, result: Result<LiveSession, String>) {
         match result {
             Ok(session)
-                if self.target.as_ref() == Some(target) && self.requested && !self.minimized =>
+                if self.target.as_ref() == Some(&attempt.target)
+                    && self.attempted.as_ref() == Some(attempt)
+                    && session.target() == &attempt.target
+                    && self.requested
+                    && !self.minimized =>
             {
                 self.session = Some(session);
                 self.started = Some(Instant::now());
@@ -103,7 +119,7 @@ impl ViewerVideo {
                 self.wait_for_retirement(session.retirement());
                 drop(session);
             }
-            Err(error) => self.failed(target, error),
+            Err(error) => self.failed(attempt, error),
         }
     }
     pub fn wait_for_retirement(&mut self, done: Arc<AtomicBool>) {
@@ -126,6 +142,11 @@ impl ViewerVideo {
     pub fn invalidate(&mut self) {
         self.stop();
         self.attempted = None;
+        if let Some(next) = self.revision.checked_add(1) {
+            self.revision = next;
+        } else {
+            self.requested = false;
+        }
         self.status.clear();
     }
     pub fn active(&self) -> bool {

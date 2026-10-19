@@ -18,7 +18,10 @@ enum Event {
     Frame(WindowTarget, super::app_frame::Decoded),
     Windows(Vec<WindowInfo>),
     Input,
-    Video(WindowTarget, Result<freelane::video::LiveSession, String>),
+    Video(
+        crate::viewer_video::Attempt,
+        Result<freelane::video::LiveSession, String>,
+    ),
 }
 type Reply = Result<Event, String>;
 struct Viewer {
@@ -556,7 +559,7 @@ impl eframe::App for Viewer {
                 self.task(&ctx, move || {
                     let result = freelane::video::LiveSession::start(
                         &vm,
-                        target.clone(),
+                        target.target.clone(),
                         std::sync::Arc::new(move || wake.request_repaint()),
                     )
                     .map_err(|e| e.to_string());
@@ -566,6 +569,8 @@ impl eframe::App for Viewer {
         }
         let repaint = if self.video.active() && !self.video.ready() {
             Duration::from_millis(100)
+        } else if self.video.active() {
+            Duration::from_secs(1) // Observe a silent QEMU port even if it stays connected.
         } else if self.worker.is_some() || !self.queue.is_empty() {
             Duration::from_millis(250) // Observe a disconnected worker even if it never sends a wakeup.
         } else if self.live && self.target().is_some() && !self.video.active() && !minimized {
@@ -705,12 +710,12 @@ mod scheduling_tests {
         v.live = true;
         v.video.requested = true;
         v.video.maintain(v.target(), false);
-        v.video.begin();
+        let attempt = v.video.begin().unwrap();
         v.enqueue(Action::WindowText {
             target: target(1),
             text: "queued once".into(),
         });
-        deliver(&mut v, Ok(Event::Video(target(1), Err("No helper".into()))));
+        deliver(&mut v, Ok(Event::Video(attempt, Err("No helper".into()))));
         assert_eq!(v.queue.len(), 1);
         assert!(v.live);
         assert!(!v.video.active());

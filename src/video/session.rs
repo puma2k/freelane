@@ -36,7 +36,13 @@ impl LiveSession {
         wakeup: Arc<dyn Fn() + Send + Sync>,
     ) -> Result<Self> {
         require_capability(config)?;
-        let binding = fresh_binding(1, 1)?;
+        let mut binding = fresh_binding(1, 1)?;
+        // Independent viewers have no shared generation counter. A fresh random
+        // stream permits generation 1 without reusing retired guest identities.
+        binding.stream = u64::from_be_bytes(binding.nonce[..8].try_into().unwrap());
+        if binding.stream == 0 {
+            return Err(Error("Video stream entropy unavailable".into()));
+        }
         let broker = Arc::new(VideoBroker::connect_with_wakeup(
             config,
             target.clone(),
@@ -128,7 +134,13 @@ impl LiveSession {
         self.broker.as_ref().unwrap().pop()
     }
     pub fn ended(&self) -> bool {
-        self.broker.as_ref().unwrap().ended() || self.control.failed.load(Ordering::Acquire)
+        self.broker.as_ref().unwrap().ended()
+            || self
+                .broker
+                .as_ref()
+                .unwrap()
+                .silent_for(Duration::from_secs(4))
+            || self.control.failed.load(Ordering::Acquire)
     }
     pub fn request_keyframe(&self) {
         self.control.key.store(true, Ordering::Release);

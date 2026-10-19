@@ -24,6 +24,7 @@ use std::{
 struct State {
     receiver: Receiver,
     ended: bool,
+    last_record: std::time::Instant,
 }
 pub struct VideoBroker {
     target: WindowTarget,
@@ -119,6 +120,7 @@ impl VideoBroker {
         let state = Arc::new(Mutex::new(State {
             receiver,
             ended: false,
+            last_record: std::time::Instant::now(),
         }));
         let shared = state.clone();
         let worker = thread::Builder::new()
@@ -127,7 +129,14 @@ impl VideoBroker {
                 let mut source = reader::Reader::new(source, wake);
                 while let Ok(Some(record)) = read_record(&mut source) {
                     source.finish_record();
-                    let accepted = shared.lock().unwrap().receiver.accept(record).is_ok();
+                    let accepted = {
+                        let mut state = shared.lock().unwrap();
+                        let accepted = state.receiver.accept(record).is_ok();
+                        if accepted {
+                            state.last_record = std::time::Instant::now();
+                        }
+                        accepted
+                    };
                     if !accepted {
                         break;
                     }
@@ -159,6 +168,9 @@ impl VideoBroker {
     }
     pub fn take_keyframe_request(&self) -> bool {
         self.state.lock().unwrap().receiver.take_keyframe_request()
+    }
+    pub fn silent_for(&self, duration: std::time::Duration) -> bool {
+        self.state.lock().unwrap().last_record.elapsed() >= duration
     }
     pub fn ended(&self) -> bool {
         self.state.lock().unwrap().ended

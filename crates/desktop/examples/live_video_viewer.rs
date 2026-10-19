@@ -14,7 +14,7 @@ mod native_video;
 mod viewer_video;
 #[cfg(all(target_os = "macos", feature = "native-video"))]
 mod owned {
-    use super::viewer_video::ViewerVideo;
+    use super::viewer_video::{Attempt, ViewerVideo};
     use eframe::egui;
     use freelane::{qemu, video::LiveSession};
     use freelane_agent_protocol::{
@@ -185,6 +185,7 @@ mod owned {
         config: PathBuf,
         start: Option<mpsc::Receiver<Result<LiveSession, String>>>,
         started: bool,
+        attempt: Option<Attempt>,
         origin: Instant,
         result: Report,
     }
@@ -198,6 +199,7 @@ mod owned {
             if !self.started {
                 self.started = true;
                 let chosen = self.video.begin().unwrap();
+                self.attempt = Some(chosen.clone());
                 let config = self.config.clone();
                 let wake = ui.ctx().clone();
                 let (tx, rx) = mpsc::channel();
@@ -206,7 +208,7 @@ mod owned {
                     let notify = wake.clone();
                     let result = LiveSession::start(
                         &config,
-                        chosen,
+                        chosen.target,
                         Arc::new(move || notify.request_repaint()),
                     )
                     .map_err(|e| e.to_string());
@@ -216,7 +218,7 @@ mod owned {
             }
             if let Some(rx) = self.start.as_ref() {
                 if let Ok(result) = rx.try_recv() {
-                    self.video.accept(&target(), result);
+                    self.video.accept(self.attempt.as_ref().unwrap(), result);
                     self.start = None;
                 }
             }
@@ -306,6 +308,7 @@ mod owned {
                     config,
                     start: None,
                     started: false,
+                    attempt: None,
                     origin: Instant::now(),
                     result,
                 }))
