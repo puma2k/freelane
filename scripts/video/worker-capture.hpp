@@ -8,6 +8,23 @@ class WindowCapture {
     std::shared_ptr<Latest> latest_=std::make_shared<Latest>();
     event_token frame_token_{},close_token_{};bool subscribed_=false,closed_subscribed_=false;
     unsigned source_width_=0,source_height_=0;
+    struct Client {unsigned x,y,width,height,dpi;
+        bool operator==(const Client& other)const{return x==other.x&&y==other.y&&width==other.width&&height==other.height&&dpi==other.dpi;}
+    } client_{};
+    Client client_geometry()const {
+        auto window=reinterpret_cast<HWND>(static_cast<uintptr_t>(target_.window));
+        RECT bounds{},client{};POINT origin{};
+        auto valid=GetClientRect(window,&client)!=FALSE&&ClientToScreen(window,&origin)!=FALSE&&
+            SUCCEEDED(DwmGetWindowAttribute(window,DWMWA_EXTENDED_FRAME_BOUNDS,&bounds,sizeof(bounds)));
+        const auto dpi=GetDpiForWindow(window);
+        freelane_video::target_check(valid&&dpi>0&&bounds.right>bounds.left&&bounds.bottom>bounds.top&&
+            bounds.right-bounds.left==int(source_width_)&&bounds.bottom-bounds.top==int(source_height_)&&
+            client.left==0&&client.top==0&&client.right>0&&client.bottom>0&&
+            origin.x>=bounds.left&&origin.y>=bounds.top&&
+            client.right<=bounds.right-origin.x&&client.bottom<=bounds.bottom-origin.y,
+            freelane_video::TargetFailure::resize);
+        return {unsigned(origin.x-bounds.left),unsigned(origin.y-bounds.top),unsigned(client.right),unsigned(client.bottom),dpi};
+    }
 public:
     unsigned width=0,height=0;uint64_t frames=0;
     explicit WindowCapture(const WorkerSetup& target):target_(target){
@@ -16,8 +33,9 @@ public:
         check_hresult(factory->CreateForWindow(reinterpret_cast<HWND>(static_cast<uintptr_t>(target.window)),guid_of<GraphicsCaptureItem>(),put_abi(item_)));
         auto size=item_.Size();freelane_video::require(size.Width>0&&size.Height>0&&size.Width<=1920&&size.Height<=1080,"Capture bounds unsupported");
         source_width_=size.Width;source_height_=size.Height;
-        const double scale=(std::min)({1.0,double(target.width)/source_width_,double(target.height)/source_height_});
-        width=static_cast<unsigned>(source_width_*scale)/2*2;height=static_cast<unsigned>(source_height_*scale)/2*2;
+        client_=client_geometry();
+        const double scale=(std::min)({1.0,double(target.width)/client_.width,double(target.height)/client_.height});
+        width=static_cast<unsigned>(client_.width*scale)/2*2;height=static_cast<unsigned>(client_.height*scale)/2*2;
         freelane_video::valid_dimensions(width,height);
         HRESULT hr=D3D11CreateDevice(nullptr,D3D_DRIVER_TYPE_HARDWARE,nullptr,D3D11_CREATE_DEVICE_BGRA_SUPPORT,nullptr,0,D3D11_SDK_VERSION,&device_,nullptr,&context_);
         if(FAILED(hr))check_hresult(D3D11CreateDevice(nullptr,D3D_DRIVER_TYPE_WARP,nullptr,D3D11_CREATE_DEVICE_BGRA_SUPPORT,nullptr,0,D3D11_SDK_VERSION,&device_,nullptr,&context_));
@@ -47,6 +65,7 @@ public:
         if(!frame)return {};
         try {
             auto content=frame.ContentSize();freelane_video::target_check(content.Width==int(source_width_)&&content.Height==int(source_height_),freelane_video::TargetFailure::resize);
+            freelane_video::target_check(client_geometry()==client_,freelane_video::TargetFailure::resize);
             auto access=frame.Surface().as<::Windows::Graphics::DirectX::Direct3D11::IDirect3DDxgiInterfaceAccess>();
             ComPtr<ID3D11Texture2D> texture;check_hresult(access->GetInterface(__uuidof(ID3D11Texture2D),reinterpret_cast<void**>(texture.GetAddressOf())));
             D3D11_TEXTURE2D_DESC desc{};texture->GetDesc(&desc);
@@ -54,9 +73,9 @@ public:
             if(!staging_){desc.Usage=D3D11_USAGE_STAGING;desc.BindFlags=0;desc.CPUAccessFlags=D3D11_CPU_ACCESS_READ;desc.MiscFlags=0;check_hresult(device_->CreateTexture2D(&desc,nullptr,&staging_));}
             context_->CopyResource(staging_.Get(),texture.Get());D3D11_MAPPED_SUBRESOURCE mapped{};
             check_hresult(context_->Map(staging_.Get(),0,D3D11_MAP_READ,0,&mapped));Bytes result;
-            try {result=freelane_video::bgra_nv12(static_cast<const uint8_t*>(mapped.pData),size_t(mapped.RowPitch)*source_height_,mapped.RowPitch,source_width_,source_height_,width,height);}
+            try {result=freelane_video::bgra_nv12_crop(static_cast<const uint8_t*>(mapped.pData),size_t(mapped.RowPitch)*source_height_,mapped.RowPitch,source_width_,source_height_,client_.x,client_.y,client_.width,client_.height,width,height);}
             catch(...){context_->Unmap(staging_.Get(),0);throw;}
-            context_->Unmap(staging_.Get(),0);frame.Close();++frames;authorize(target_);return result;
+            context_->Unmap(staging_.Get(),0);frame.Close();++frames;authorize(target_);freelane_video::target_check(client_geometry()==client_,freelane_video::TargetFailure::resize);return result;
         }catch(...){try{frame.Close();}catch(...){}throw;}
     }
 };

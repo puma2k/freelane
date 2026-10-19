@@ -123,6 +123,7 @@ void stall_test(){
 int wmain(int argc,wchar_t** argv){
     bool apartment=false,mf=false;int result=3;
     try{
+        freelane_video::require(SetProcessDpiAwarenessContext(DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2)!=FALSE,"Cannot establish physical capture coordinates");
         init_apartment(apartment_type::multi_threaded);apartment=true;check_hresult(MFStartup(MF_VERSION));mf=true;
         if(argc==2&&std::wstring(argv[1])==L"--owned-stall-test"){stall_test();result=0;}
         else if(argc==2&&std::wstring(argv[1])==L"--owned-progress-stall-test"){
