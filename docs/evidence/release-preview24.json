@@ -1,0 +1,57 @@
+{
+  "tag": "v0.1.0-preview.24",
+  "source_commit": "6a8dc0d8aaa6d816a9648c6f640539c1315019a4",
+  "public_download_verified": true,
+  "packaging_run": "https://github.com/puma2k/freelane/actions/runs/39216658099",
+  "assets": [
+    {
+      "name": "FreeLane-0.1.0-6a8dc0d8aaa6-macos-arm64.dmg",
+      "sha256": "126f3d687857732d72debb2ddb07c12d08c4bab3a2dfca58ad1c462c8cf78317",
+      "bytes": 15105985,
+      "url": "https://github.com/puma2k/freelane/releases/download/v0.1.0-preview.24/FreeLane-0.1.0-6a8dc0d8aaa6-macos-arm64.dmg",
+      "udif_footer": true
+    },
+    {
+      "name": "FreeLane-0.1.0-6a8dc0d8aaa6-macos-arm64.zip",
+      "sha256": "9cd07fb6fc2ada3a88f5b37aaaa27d638aab43ac487018fbc6e514eff51d822b",
+      "bytes": 12414170,
+      "url": "https://github.com/puma2k/freelane/releases/download/v0.1.0-preview.24/FreeLane-0.1.0-6a8dc0d8aaa6-macos-arm64.zip",
+      "embedded_source_revision": "6a8dc0d8aaa6",
+      "macho_arm64_cli_and_desktop": true
+    },
+    {
+      "name": "FreeLane-v0.1.0-preview.24-windows-arm64-agent.zip",
+      "sha256": "36acfcefd4b46dbed2435b59733e871c9ea30c29ff152c726ac03633fa04797d",
+      "bytes": 1523955,
+      "url": "https://github.com/puma2k/freelane/releases/download/v0.1.0-preview.24/FreeLane-v0.1.0-preview.24-windows-arm64-agent.zip",
+      "pe_arm64_agent_and_helper": true,
+      "inner_checksums_verified": true,
+      "setup_matches_tag_normalized_newlines": true
+    }
+  ],
+  "physical_mac_acceptance": false,
+  "developer_id_notarized": false,
+  "tag_checks": {
+    "39216658157": "Success",
+    "39216658152": "Success",
+    "39216658111": "Success",
+    "39216658099": "Success"
+  },
+  "tag_check_workflows": {
+    "39216658157": "required Rust and ARM checks",
+    "39216658152": "native Windows/Mac video",
+    "39216658111": "Windows lifecycle and native package",
+    "39216658099": "release packaging and publication"
+  },
+  "main_macos_package_run": "https://github.com/puma2k/freelane/actions/runs/39216591204",
+  "main_macos_package_status": "Success",
+  "rust_tests": {
+    "passed": 284,
+    "failed": 0,
+    "ignored": 9
+  },
+  "video_tests": 16,
+  "mcp_tests": 14,
+  "installed_vm_performance_verified": false,
+  "popup_compositing_verified": false
+}

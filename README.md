@@ -43,7 +43,7 @@ The desktop displays snapshots, with optional refresh for desktop VMs. Continuou
 
 ## Download an experimental build
 
-[Download the Apple Silicon prerelease](https://github.com/puma2k/freelane/releases/tag/v0.1.0-preview.23): Mac DMG/ZIP, Windows ARM64 guest-agent ZIP and SHA256 files. Open the DMG and drag FreeLane into Applications. Includes experimental app windows and Dock export; read the release notes before installation.
+[Download the Apple Silicon prerelease](https://github.com/puma2k/freelane/releases/tag/v0.1.0-preview.24): Mac DMG/ZIP, Windows ARM64 guest-agent ZIP and SHA256 files. Open the DMG and drag FreeLane into Applications. Includes experimental live app video, snapshot fallback, paired Windows setup and Dock export; read the release notes before installation.
 
 The [Mac Apple Silicon packaging workflow](https://github.com/puma2k/freelane/actions/workflows/release.yml) produces an experimental `.app` ZIP on a Mac runner. Download the artifact only from a successful run. It needs macOS14+; the VM setup flow downloads missing backends automatically, while mobile runtimes use separate setup; it is ad-hoc signed, not notarized. See [release instructions](docs/release.md). Linux cloud binaries are a separate build and cannot run on Mac.
 
