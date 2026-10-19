@@ -1,0 +1,38 @@
+{
+  "schema": 1,
+  "source_commit": "347140e",
+  "native_run": "https://github.com/puma2k/freelane/actions/runs/39194465704",
+  "native_run_status": "success",
+  "sdk_surface": {
+    "asynchronous_close_cycles": 8,
+    "copy_path_measured": false,
+    "decoded": 30,
+    "embedded_view": true,
+    "hardware": true,
+    "nv12": true,
+    "onscreen_pixels_verified": false,
+    "pixel_variation": true,
+    "presented": 30,
+    "production_cpu_readback": false
+  },
+  "rust_eframe_surface": {
+    "decoded": 30,
+    "embedded_eframe_view": true,
+    "hardware": true,
+    "onscreen_pixels_verified": false,
+    "presented": 29
+  },
+  "portable_rust": {
+    "passed": 269,
+    "failed": 0,
+    "ignored": 9
+  },
+  "portable_video_tests": 15,
+  "mcp_tests": 14,
+  "live_viewer_enabled": false,
+  "physical_mac_acceptance": false,
+  "end_to_end_latency_measured": false,
+  "sustained_frame_rate_measured": false,
+  "source_ci_run": "https://github.com/puma2k/freelane/actions/runs/39194465627",
+  "source_ci_status": "success"
+}
