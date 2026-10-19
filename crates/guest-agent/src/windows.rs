@@ -180,6 +180,40 @@ fn incarnation(window: Handle) -> io::Result<u64> {
     values.insert(window, token);
     Ok(token)
 }
+fn video_session(
+) -> &'static std::sync::Mutex<crate::video::Session<crate::video_process::ProcessEncoder>> {
+    static SESSION: std::sync::OnceLock<
+        std::sync::Mutex<crate::video::Session<crate::video_process::ProcessEncoder>>,
+    > = std::sync::OnceLock::new();
+    SESSION.get_or_init(|| {
+        let helper = std::env::current_exe()
+            .ok()
+            .and_then(|p| {
+                p.parent()
+                    .map(|parent| parent.join("freelane-video-helper.exe"))
+            })
+            .unwrap_or_default();
+        std::sync::Mutex::new(crate::video::Session::new(
+            crate::video_process::ProcessEncoder::new(
+                std::process::Command::new(helper),
+                |target| checked(target).map(|_| ()),
+            ),
+        ))
+    })
+}
+pub fn video_available() -> bool {
+    video_session()
+        .lock()
+        .is_ok_and(|session| session.available())
+}
+pub fn video_operation(
+    operation: &freelane_agent_protocol::video_control::Operation,
+) -> io::Result<freelane_agent_protocol::video_control::Reply> {
+    video_session()
+        .lock()
+        .map_err(|_| invalid("Video session unavailable"))?
+        .action(operation)
+}
 fn checked(target: &WindowTarget) -> io::Result<Handle> {
     let handle = isize::try_from(target.handle).map_err(|_| invalid("Invalid HWND"))?;
     let mut pid = 0;

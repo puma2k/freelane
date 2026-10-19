@@ -11,7 +11,13 @@ class WorkerStreamTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as directory:
             src = Path(directory)/'worker.cpp'
             binary = Path(directory)/'worker'
-            src.write_text(r'''#include "stream-writer.hpp"
+            src.write_text(r'''#include <array>
+#include <functional>
+#include <limits>
+#include <algorithm>
+#include "annexb.hpp"
+#define max(a,b) windows_max_macro(a,b)
+#include "stream-writer.hpp"
 #include "worker-setup.hpp"
 #include "bgra-nv12.hpp"
 #include <cassert>

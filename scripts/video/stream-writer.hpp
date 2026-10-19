@@ -35,7 +35,7 @@ public:
                 record(1,false,packet.configuration,0,0);configured_=true;
             }
             if(packet.access_unit.empty())return;
-            require(configured_&&pictures_<std::numeric_limits<uint64_t>::max(),"Invalid stream sequence/configuration");
+            require(configured_&&pictures_<(std::numeric_limits<uint64_t>::max)(),"Invalid stream sequence/configuration");
             require(pictures_?pts>last_pts_:packet.idr,"Stream must start with IDR and advance timestamps");
             record(2,packet.idr,packet.access_unit,pictures_+1,pts);++pictures_;last_pts_=pts;
         }catch(...){healthy_=false;throw;}

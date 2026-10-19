@@ -378,6 +378,15 @@ pub fn serve(
 pub struct WindowsLauncher;
 #[cfg(windows)]
 impl Launcher for WindowsLauncher {
+    fn video_support(&self) -> bool {
+        windows::video_available()
+    }
+    fn video_action(
+        &mut self,
+        operation: &freelane_agent_protocol::video_control::Operation,
+    ) -> io::Result<freelane_agent_protocol::video_control::Reply> {
+        windows::video_operation(operation)
+    }
     fn window_input_support(&self) -> bool {
         true
     }
