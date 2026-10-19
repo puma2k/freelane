@@ -26,4 +26,15 @@ inline Bytes bgra_nv12(const uint8_t* data,size_t bytes,size_t stride,unsigned w
     }
     return output;
 }
+inline Bytes bgra_nv12_crop(const uint8_t* data,size_t bytes,size_t stride,unsigned width,unsigned height,
+                           unsigned left,unsigned top,unsigned client_width,unsigned client_height,unsigned w,unsigned h) {
+    require(data&&width>0&&height>0&&width<=1920&&height<=1080,"Invalid BGRA surface");
+    require(stride>=size_t(width)*4&&stride<=1920*4+65536,"Invalid BGRA stride");
+    require(bytes>=stride*(height-1)+size_t(width)*4,"Truncated BGRA surface");
+    require(left<width&&top<height&&client_width>0&&client_height>0&&
+            client_width<=width-left&&client_height<=height-top,"Invalid client crop");
+    const size_t offset=size_t(top)*stride+size_t(left)*4;
+    return bgra_nv12(data+offset,bytes-offset,stride,client_width,client_height,w,h);
+}
+
 }

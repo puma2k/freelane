@@ -53,6 +53,11 @@ struct RunStats {uint64_t pictures=0,captured=0;unsigned idrs=0,pending=0,width=
 RunStats run(const WorkerSetup& setup,const std::function<void(const Bytes&)>& sink,OwnedWindow* owned=nullptr,int lifecycle=0,freelane_video::LifecycleProof* proof=nullptr){
     std::unique_ptr<WorkerWatch> watch; // Outlives capture/codec cleanup as well.
     authorize(setup);WindowCapture capture(setup);bool started=false;
+    if(owned){RECT client{};
+        freelane_video::require(GetClientRect(owned->handle,&client)!=FALSE&&
+            capture.width==unsigned(client.right)/2*2&&capture.height==unsigned(client.bottom)/2*2,
+            "Worker must encode client pixels without window chrome");
+    }
     WindowCodec codec(setup.binding,capture.width,capture.height,sink,[&]{started=true;if(!owned)status_byte('S');});
     std::unique_ptr<Commands> commands;
     if(!owned){status_byte('R');char go=0;read_exact(&go,1);freelane_video::require(go=='G',"Invalid start authorization");authorize(setup);commands=std::make_unique<Commands>();}
