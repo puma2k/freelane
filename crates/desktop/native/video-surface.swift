@@ -68,9 +68,22 @@ final class NativeDecodeState: @unchecked Sendable {
         lock.unlock()
         if wake { DispatchQueue.main.async { self.present() } }
     }
-    @MainActor func present() {
+    @discardableResult func observeDisplayStatus(_ status: AVQueuedSampleBufferRenderingStatus) -> Bool {
+        lock.lock(); defer { lock.unlock() }
+        if status == .failed { error = 5; latest = nil; scheduled = false }
+        return closed || error != 0
+    }
+    @MainActor func resume() {
         lock.lock()
-        guard !closed, let frame = latest, let view = view else { scheduled = false; lock.unlock(); return }
+        let wake = !closed && error == 0 && latest != nil && !scheduled
+        if wake { scheduled = true }
+        lock.unlock()
+        if wake { DispatchQueue.main.async { self.present() } }
+    }
+    @MainActor func present() {
+        if let view = view, observeDisplayStatus(view.display.status) { return }
+        lock.lock()
+        guard !closed, error == 0, let frame = latest, let view = view else { scheduled = false; lock.unlock(); return }
         if !view.display.isReadyForMoreMediaData {
             let visible = view.window?.isVisible == true && view.window?.isMiniaturized == false
             if !visible { scheduled = false }
@@ -195,6 +208,7 @@ func nativeVideoFormat(_ bytes: [UInt8]) throws -> CMVideoFormatDescription {
         guard !closed && [x,y,width,height].allSatisfy({ $0.isFinite }) && width > 0 && height > 0 else { container.isHidden = true; return }
         container.frame = NSRect(x: x, y: host.isFlipped ? y : host.bounds.height-y-height, width: width, height: height)
         container.display.frame = container.bounds; container.isHidden = !visible
+        if visible { state?.resume() }
     }
     func stats() -> [UInt64] {
         guard let state = state else { return [0,0,0,0,0,0,closed ? 1 : 0,0] }
@@ -207,6 +221,7 @@ func nativeVideoFormat(_ bytes: [UInt8]) throws -> CMVideoFormatDescription {
                 if !state.hardware { state.error = 6 }; state.lock.unlock()
             }
         }
+        state.observeDisplayStatus(container.display.status)
         state.lock.lock(); defer { state.lock.unlock() }
         return [state.submitted,state.decoded,state.presented,state.superseded,state.inflight,state.hardware ? 1 : 0,state.error,container.display.status == .rendering ? 1 : 0]
     }

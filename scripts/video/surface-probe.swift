@@ -22,6 +22,20 @@ func require(_ valid: Bool, _ message: String) throws { if !valid { throw ProbeF
     let configLength = raw[8..<12].reduce(0) { ($0 << 8) | Int($1) }
     try require(configLength > 0 && configLength <= 65536 && 64+configLength < raw.count,"Invalid captured configuration")
     let configuration = Array(raw[64..<64+configLength])
+    // Exercise admission before any callback can race the bounded state.
+    let admission = NativeDecodeState(width:320,height:180)
+    try require(admission.begin(10) == 1 && admission.begin(10) == -1 && admission.begin(11) == 1 && admission.begin(12) == 0,"Admission/PTS bounds failed")
+    admission.complete(noErr,[.frameDropped],nil,CMTime(value:10,timescale:1000000))
+    try require(admission.begin(12) == 1,"Busy request consumed timestamp")
+    admission.close()
+    try require(admission.begin(13) == -1,"Closed state accepted decode")
+    let failedDisplay = NativeDecodeState(width:320,height:180)
+    try require(!failedDisplay.observeDisplayStatus(.unknown) && failedDisplay.begin(1) == 1,"Healthy display rejected")
+    failedDisplay.scheduled = true
+    try require(failedDisplay.observeDisplayStatus(.failed) && failedDisplay.error == 5 && !failedDisplay.scheduled && failedDisplay.begin(2) == -1,"Asynchronous display failure was not terminal")
+    var malformed = configuration; malformed[5] = 226
+    do { _ = try nativeVideoFormat(malformed); throw ProbeFailure(message:"Multiple SPS accepted") }
+    catch is NativeVideoFailure { }
     let surface = NativeVideoSurface(host: host)
     defer { surface.close() }
     try surface.configure(configuration,320,180)
