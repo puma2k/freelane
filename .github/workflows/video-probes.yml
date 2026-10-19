@@ -25,7 +25,7 @@ jobs:
           $targets = if ($hostArch -eq 'arm64') { @('arm64') } else { @('amd64','arm64') }
           foreach ($arch in $targets) {
             $script = Join-Path $env:RUNNER_TEMP "freelane-video-$arch.cmd"
-            @('@echo off', "call `"$vs\Common7\Tools\VsDevCmd.bat`" -no_logo -host_arch=$hostArch -arch=$arch", 'if errorlevel 1 exit /b 1', "cl /nologo /std:c++20 /EHsc /W4 /DUNICODE /D_UNICODE /Fe:target\video-probes\probe-$arch.exe scripts\video\probe-windows.cpp mfplat.lib mfreadwrite.lib mfuuid.lib ole32.lib oleaut32.lib d3d11.lib dxgi.lib windowsapp.lib user32.lib gdi32.lib", 'exit /b %errorlevel%') | Set-Content -Encoding ascii $script
+            @('@echo off', "call `"$vs\Common7\Tools\VsDevCmd.bat`" -no_logo -host_arch=$hostArch -arch=$arch", 'if errorlevel 1 exit /b 1', "cl /nologo /std:c++20 /EHsc /W4 /DUNICODE /D_UNICODE /Fe:target\video-probes\probe-$arch.exe scripts\video\probe-windows.cpp mfplat.lib mfreadwrite.lib mfuuid.lib ole32.lib oleaut32.lib d3d11.lib dxgi.lib windowsapp.lib user32.lib gdi32.lib", 'if errorlevel 1 exit /b 1', "cl /nologo /std:c++20 /EHsc /W4 /MT /DUNICODE /D_UNICODE /Fe:target\video-probes\worker-$arch.exe scripts\video\worker-windows.cpp mfplat.lib mfuuid.lib ole32.lib oleaut32.lib d3d11.lib dxgi.lib windowsapp.lib user32.lib gdi32.lib", 'exit /b %errorlevel%') | Set-Content -Encoding ascii $script
             & cmd /d /c $script *> "target/video-probes/build-$arch.log"
             if ($LASTEXITCODE -ne 0) {
               Get-Content "target/video-probes/build-$arch.log" | Where-Object { $_ -match 'error C[0-9]+|fatal error|error LNK' } | Select-Object -First 10 | ForEach-Object { Write-Output "::error title=Native probe build::$_" }
@@ -52,12 +52,32 @@ jobs:
           & $exe $folder
           if ($LASTEXITCODE -ne 2 -or (Get-FileHash "$folder/fixture.mp4" -Algorithm SHA256).Hash -ne $before) { throw 'Existing destination was not preserved' }
           $global:LASTEXITCODE = 0
+      - name: Exercise persistent owned worker and bounded stalled output
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $native = if ([System.Runtime.InteropServices.RuntimeInformation]::OSArchitecture -eq [System.Runtime.InteropServices.Architecture]::Arm64) { 'arm64' } else { 'amd64' }
+          $exe = Join-Path $PWD "target/video-probes/worker-$native.exe"
+          $folder = Join-Path $PWD 'target/video-probes/worker-generated'
+          $p = Start-Process $exe -ArgumentList @('--owned-self-test',"`"$folder`"") -PassThru -NoNewWindow
+          if (-not $p.WaitForExit(60000)) { $p.Kill(); throw 'Persistent owned worker timed out' }
+          if ($p.ExitCode -ne 0) { throw "Persistent owned worker exited $($p.ExitCode)" }
+          $r = Get-Content "$folder/worker-report.json" -Raw | ConvertFrom-Json
+          Write-Output "::notice title=Persistent worker report::$($r | ConvertTo-Json -Compress)"
+          if ($r.pictures -ne 90 -or $r.captured_frames -lt 90 -or $r.idrs -lt 2 -or $r.max_pending -gt 2 -or $r.lifecycle_failures -ne 3) { throw 'Persistent worker lifecycle/stream bounds failed' }
+          $output = Join-Path $PWD 'target/video-probes/stall-stdout.txt'
+          $p = Start-Process $exe -ArgumentList '--owned-stall-test' -RedirectStandardOutput $output -PassThru -NoNewWindow
+          if (-not $p.WaitForExit(5000)) { $p.Kill(); throw 'Stalled output did not terminate helper' }
+          if ($p.ExitCode -ne 0 -or (Get-Content $output -Raw) -ne 'TF') { throw 'Overlapped output cancellation was not verified' }
       - uses: actions/upload-artifact@v4
         if: always()
         with:
           name: experimental-windows-video-probe-${{ matrix.os }}
           path: |
             target/video-probes/probe-*.exe
+            target/video-probes/worker-*.exe
+            target/video-probes/worker-generated/*
+            target/video-probes/stall-stdout.txt
             target/video-probes/generated/*
             target/video-probes/build-*.log
           if-no-files-found: warn
@@ -104,6 +124,8 @@ jobs:
         run: cargo run --locked -p freelane-agent-protocol --example video_check -- target/video-probes/input/generated/packets.flv
       - name: Validate captured Windows packets with the Rust protocol
         run: cargo run --locked -p freelane-agent-protocol --example video_check -- target/video-probes/input/generated/captured-packets.flv
+      - name: Validate persistent worker packets with Rust
+        run: cargo run --locked -p freelane-agent-protocol --example video_check -- target/video-probes/input/worker-generated/worker-packets.flv --worker
       - name: Exercise native compressed decode and surface
         run: |
           set -euo pipefail
