@@ -1,6 +1,7 @@
 //! Owned binary video reader and negotiated control; native backend/frontend integration is separate.
 mod control;
 mod reader;
+mod session;
 use crate::{qemu, Error, Result};
 pub use control::{fresh_binding, require_capability};
 use freelane_agent_protocol::{
@@ -8,6 +9,7 @@ use freelane_agent_protocol::{
     WindowTarget,
 };
 use fs2::FileExt;
+pub use session::LiveSession;
 use std::{
     fs::{self, File, OpenOptions},
     net::Shutdown,
@@ -59,6 +61,16 @@ impl VideoBroker {
     /// Caller must first negotiate/authorize this exact target and binding on control.
     /// Video bytes cannot start capture, switch target, or relaunch an application.
     pub fn connect(config: &Path, target: WindowTarget, binding: Binding) -> Result<Self> {
+        Self::connect_with_wakeup(config, target, binding, Arc::new(|| {}))
+    }
+    /// Wake observers after records and termination, outside the receiver lock.
+    /// The callback must return promptly; it executes on the owned reader thread.
+    pub fn connect_with_wakeup(
+        config: &Path,
+        target: WindowTarget,
+        binding: Binding,
+        wakeup: Arc<dyn Fn() + Send + Sync>,
+    ) -> Result<Self> {
         if target.handle == 0 || target.pid == 0 || target.created == 0 || target.incarnation == 0 {
             return Err(Error("Video requires a complete window identity".into()));
         }
@@ -115,13 +127,17 @@ impl VideoBroker {
                 let mut source = reader::Reader::new(source, wake);
                 while let Ok(Some(record)) = read_record(&mut source) {
                     source.finish_record();
-                    if shared.lock().unwrap().receiver.accept(record).is_err() {
+                    let accepted = shared.lock().unwrap().receiver.accept(record).is_ok();
+                    if !accepted {
                         break;
                     }
+                    wakeup();
                 }
                 let mut state = shared.lock().unwrap();
                 state.receiver.clear();
                 state.ended = true;
+                drop(state);
+                wakeup();
             })
             .map_err(|e| Error(e.to_string()))?;
         Ok(Self {

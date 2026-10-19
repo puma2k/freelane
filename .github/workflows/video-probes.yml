@@ -1,9 +1,9 @@
 name: Experimental native video probes
 on:
   push:
-    paths: ['scripts/video/**', 'tests/video/**', 'crates/desktop/**', '.github/workflows/video-probes.yml']
+    paths: ['scripts/video/**', 'tests/video/**', 'crates/desktop/**', 'src/video/**', 'tests/video_broker.rs', '.github/workflows/video-probes.yml']
   pull_request:
-    paths: ['scripts/video/**', 'tests/video/**', 'crates/desktop/**', '.github/workflows/video-probes.yml']
+    paths: ['scripts/video/**', 'tests/video/**', 'crates/desktop/**', 'src/video/**', 'tests/video_broker.rs', '.github/workflows/video-probes.yml']
 permissions:
   contents: read
 jobs:
@@ -211,7 +211,7 @@ jobs:
       - name: Exercise Rust UI-thread embedded native surface
         run: |
           set -euo pipefail
-          if ! cargo build --locked -p freelane-desktop --features native-video --example native_video_surface > target/video-probes/build-eframe.log 2>&1; then
+          if ! cargo build --locked -p freelane-desktop --features native-video --bins --example native_video_surface --example live_video_viewer > target/video-probes/build-eframe.log 2>&1; then
             python3 - <<'PYCODE'
           from pathlib import Path
           lines=Path('target/video-probes/build-eframe.log').read_text().splitlines()
@@ -237,6 +237,21 @@ jobs:
           print('::notice title=Rust embedded native surface report::'+json.dumps(report))
           assert report['decoded']==30 and report['presented']>0 and report['hardware'] and report['embedded_eframe_view'],report
           PYCODE
+      - name: Exercise production live session, binary transport and viewer state
+        run: |
+          python3 - <<'PY'
+          import subprocess,json
+          from pathlib import Path
+          result=subprocess.run(['target/debug/examples/live_video_viewer','target/video-probes/input/generated/captured-packets.flv'],capture_output=True,text=True,timeout=45)
+          Path('target/video-probes/live-viewer-stderr.txt').write_text(result.stderr)
+          if result.returncode:
+              print('::error title=Live viewer transport::'+result.stderr[-2500:].replace('\n','%0A'))
+              raise SystemExit(result.returncode)
+          report=json.loads(result.stdout)
+          Path('target/video-probes/live-viewer-report.json').write_text(result.stdout)
+          print('::notice title=Live viewer transport report::'+json.dumps(report))
+          assert report['decoded']>=30 and report['presented']>0 and report['hardware'] and report['serial_socket_transport'] and report['normal_viewer_video_state'] and report['stop_acknowledged'],report
+          PY
       - name: Assess native evidence without promoting x64 to ARM acceptance
         run: |
           set -euo pipefail
@@ -250,6 +265,8 @@ jobs:
         with:
           name: experimental-macos-video-probe
           path: |
+            target/video-probes/live-viewer-report.json
+            target/video-probes/live-viewer-stderr.txt
             target/video-probes/build-eframe.log
             target/video-probes/eframe-surface-report.json
             target/video-probes/eframe-surface-stderr.txt

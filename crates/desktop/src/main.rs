@@ -16,6 +16,7 @@ mod setup;
 mod sharing_ui;
 mod transfer_ui;
 mod viewer_schedule;
+mod viewer_video;
 mod wizard;
 use eframe::egui;
 use freelane::{agent, qemu, Config, GuestOs};

@@ -1,4 +1,4 @@
-//! Separate native viewer process per saved Windows application; snapshots, not Coherence video.
+//! Separate native viewer process per saved Windows application; native video with snapshot fallback.
 use super::viewer_schedule::{Decision, Schedule};
 use eframe::egui;
 use freelane::{
@@ -18,6 +18,7 @@ enum Event {
     Frame(WindowTarget, super::app_frame::Decoded),
     Windows(Vec<WindowInfo>),
     Input,
+    Video(WindowTarget, Result<freelane::video::LiveSession, String>),
 }
 type Reply = Result<Event, String>;
 struct Viewer {
@@ -40,6 +41,7 @@ struct Viewer {
     drag: Option<(WindowTarget, Position, Button)>,
     guest_width: u16,
     guest_height: u16,
+    video: crate::viewer_video::ViewerVideo,
 }
 impl Viewer {
     fn task(&mut self, ctx: &egui::Context, f: impl FnOnce() -> Reply + Send + 'static) {
@@ -55,6 +57,9 @@ impl Viewer {
         self.windows.get(self.selected).map(|w| w.target.clone())
     }
     fn enqueue(&mut self, action: Action) {
+        if matches!(action, Action::WindowResize { .. }) {
+            self.video.invalidate();
+        }
         if self.queue.len() < 32 {
             self.queue.push_back(action);
         } else {
@@ -94,6 +99,7 @@ impl Viewer {
                 self.schedule.frame_completed(Instant::now());
             }
             Ok(Event::Windows(windows)) => {
+                self.video.invalidate();
                 self.queue.clear();
                 self.drag = None;
                 self.windows = windows;
@@ -101,6 +107,9 @@ impl Viewer {
                 self.texture = None;
                 self.frame_key = None;
                 self.schedule.reset(Instant::now());
+            }
+            Ok(Event::Video(target, result)) => {
+                self.video.accept(&target, result);
             }
             Ok(Event::Input) => {
                 self.schedule
@@ -117,6 +126,8 @@ impl Viewer {
                     )
                 };
                 self.live = false;
+                self.video.requested = false;
+                self.video.invalidate();
                 self.queue.clear();
             }
         }
@@ -172,8 +183,10 @@ impl Viewer {
     }
 }
 impl eframe::App for Viewer {
-    fn ui(&mut self, ui: &mut egui::Ui, _frame: &mut eframe::Frame) {
+    fn ui(&mut self, ui: &mut egui::Ui, frame: &mut eframe::Frame) {
         let ctx = ui.ctx().clone();
+        let minimized = ctx.input(|i| i.viewport().minimized.unwrap_or(false));
+        self.video.maintain(self.target(), minimized);
         if !self.started {
             self.started = true;
             let p = self.profile.clone();
@@ -267,16 +280,35 @@ impl eframe::App for Viewer {
                             }
                         });
                     if old != self.selected {
+                        self.video.invalidate();
                         self.drag = None;
                         self.texture = None;
                         self.frame_key = None;
                         self.queue.clear();
                         self.schedule.reset(Instant::now());
                     }
-                    ui.checkbox(&mut self.live, lang.text("Refresh every second"));
+                    if crate::viewer_video::ViewerVideo::supported() {
+                        if ui
+                            .checkbox(&mut self.video.requested, lang.text("Live video"))
+                            .changed()
+                        {
+                            self.video.invalidate();
+                        }
+                        ui.label(lang.text(if self.video.ready() {
+                            "Video"
+                        } else {
+                            "Snapshots"
+                        }))
+                        .on_hover_text(lang.message(self.video.status()));
+                    }
+                    if !self.video.active() {
+                        ui.checkbox(&mut self.live, lang.text("Refresh every second"));
+                    }
                     if ui
                         .add_enabled(
-                            self.worker.is_none() && self.target().is_some(),
+                            self.worker.is_none()
+                                && self.target().is_some()
+                                && !self.video.active(),
                             egui::Button::new(lang.text("Refresh frame")),
                         )
                         .clicked()
@@ -367,13 +399,30 @@ impl eframe::App for Viewer {
                 }
                 ui.label(lang.message(&self.notice));
             });
+        self.video.maintain(self.target(), minimized);
+        self.video.prepare(frame);
         egui::CentralPanel::default().show(ui, |ui| {
-            if let Some(texture) = &self.texture {
-                let response = ui.add(
-                    egui::Image::new(texture)
-                        .max_size(ui.available_size())
-                        .sense(egui::Sense::click_and_drag()),
+            let response = if let Some((width, height)) = self.video.dimensions() {
+                let available = ui.available_size();
+                let scale = (available.x / width as f32)
+                    .min(available.y / height as f32)
+                    .max(0.001);
+                let (rect, response) = ui.allocate_exact_size(
+                    egui::vec2(width as f32 * scale, height as f32 * scale),
+                    egui::Sense::click_and_drag(),
                 );
+                self.video.render(&ctx, rect);
+                Some(response)
+            } else {
+                self.texture.as_ref().map(|texture| {
+                    ui.add(
+                        egui::Image::new(texture)
+                            .max_size(ui.available_size())
+                            .sense(egui::Sense::click_and_drag()),
+                    )
+                })
+            };
+            if let Some(response) = response {
                 let position = |pos: egui::Pos2| Position {
                     x: ((pos.x - response.rect.left()) / response.rect.width() * 32767.0)
                         .clamp(0.0, 32767.0) as u16,
@@ -484,7 +533,7 @@ impl eframe::App for Viewer {
         match self.schedule.choose(
             Instant::now(),
             self.worker.is_some(),
-            self.live,
+            self.live && !self.video.active() && !minimized,
             self.target().is_some(),
             !self.queue.is_empty(),
         ) {
@@ -500,9 +549,26 @@ impl eframe::App for Viewer {
             Decision::Capture => self.capture(&ctx),
             Decision::Idle => {}
         }
-        let repaint = if self.worker.is_some() || !self.queue.is_empty() {
+        if self.worker.is_none() && self.queue.is_empty() {
+            if let Some(target) = self.video.begin() {
+                let vm = self.profile.vm.clone();
+                let wake = ctx.clone();
+                self.task(&ctx, move || {
+                    let result = freelane::video::LiveSession::start(
+                        &vm,
+                        target.clone(),
+                        std::sync::Arc::new(move || wake.request_repaint()),
+                    )
+                    .map_err(|e| e.to_string());
+                    Ok(Event::Video(target, result))
+                });
+            }
+        }
+        let repaint = if self.video.active() && !self.video.ready() {
+            Duration::from_millis(100)
+        } else if self.worker.is_some() || !self.queue.is_empty() {
             Duration::from_millis(250) // Observe a disconnected worker even if it never sends a wakeup.
-        } else if self.live && self.target().is_some() {
+        } else if self.live && self.target().is_some() && !self.video.active() && !minimized {
             self.schedule
                 .deadline()
                 .saturating_duration_since(Instant::now())
@@ -552,6 +618,7 @@ pub fn run(path: &Path, attach_pid: Option<u32>, language: super::Language) -> e
                 drag: None,
                 guest_width: 1280,
                 guest_height: 720,
+                video: crate::viewer_video::ViewerVideo::default(),
             }))
         }),
     )
@@ -621,6 +688,7 @@ mod scheduling_tests {
             drag: None,
             guest_width: 1280,
             guest_height: 720,
+            video: crate::viewer_video::ViewerVideo::default(),
         }
     }
     fn deliver(viewer: &mut Viewer, reply: Reply) {
@@ -631,6 +699,23 @@ mod scheduling_tests {
         viewer.apply_reply(&ctx, viewer.worker.as_ref().unwrap().recv().unwrap());
     }
 
+    #[test]
+    fn unavailable_video_preserves_queued_input_and_snapshot_refresh() {
+        let mut v = viewer();
+        v.live = true;
+        v.video.requested = true;
+        v.video.maintain(v.target(), false);
+        v.video.begin();
+        v.enqueue(Action::WindowText {
+            target: target(1),
+            text: "queued once".into(),
+        });
+        deliver(&mut v, Ok(Event::Video(target(1), Err("No helper".into()))));
+        assert_eq!(v.queue.len(), 1);
+        assert!(v.live);
+        assert!(!v.video.active());
+        assert_eq!(v.video.status(), "No helper");
+    }
     #[test]
     fn stale_frame_cannot_replace_selected_window_texture() {
         let mut v = viewer();

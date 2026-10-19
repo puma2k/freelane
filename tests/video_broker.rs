@@ -293,3 +293,231 @@ fn existing_readable_supervisor_lock_inside_private_runtime_is_compatible() {
     let (broker, _peer) = f.connect();
     drop(broker);
 }
+
+#[test]
+fn record_and_end_wake_observers_for_delivery_and_fallback() {
+    use std::sync::{
+        atomic::{AtomicUsize, Ordering},
+        Arc,
+    };
+    let f = Fixture::new();
+    let count = Arc::new(AtomicUsize::new(0));
+    let wakes = count.clone();
+    let b = VideoBroker::connect_with_wakeup(
+        &f.config,
+        target(),
+        binding(),
+        Arc::new(move || {
+            wakes.fetch_add(1, Ordering::SeqCst);
+        }),
+    )
+    .unwrap();
+    let mut peer = f.listener.accept().unwrap().0;
+    write_record(&mut peer, &config()).unwrap();
+    wait_until(|| count.load(Ordering::SeqCst) >= 1);
+    write_record(&mut peer, &frame(1, true)).unwrap();
+    wait_until(|| count.load(Ordering::SeqCst) >= 2);
+    assert_eq!(b.pop().unwrap().sequence, 1);
+    drop(peer);
+    wait_until(|| count.load(Ordering::SeqCst) >= 3);
+    assert!(b.ended());
+}
+
+fn serve_video_control(
+    listener: &UnixListener,
+    f: impl FnOnce(freelane_agent_protocol::Action) -> freelane_agent_protocol::Outcome,
+) {
+    use freelane_agent_protocol::{read_frame, write_frame, Request, Response};
+    let end = Instant::now() + Duration::from_secs(5);
+    listener.set_nonblocking(true).unwrap();
+    let (mut peer, _) = loop {
+        match listener.accept() {
+            Ok(p) => break p,
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock && Instant::now() < end => {
+                thread::sleep(Duration::from_millis(2))
+            }
+            Err(e) => panic!("Owned control accept failed: {e}"),
+        }
+    };
+    peer.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
+    let request: Request =
+        read_frame(&mut std::io::BufReader::new(peer.try_clone().unwrap())).unwrap();
+    let outcome = f(request.action);
+    write_frame(
+        &mut peer,
+        &Response {
+            version: request.version,
+            id: request.id,
+            outcome,
+        },
+    )
+    .unwrap();
+}
+fn video_info() -> freelane_agent_protocol::Outcome {
+    use freelane_agent_protocol::{AgentInfo, Feature, Outcome};
+    Outcome::AgentInfo {
+        info: AgentInfo {
+            agent_version: "owned-session-fixture".into(),
+            os: "windows".into(),
+            arch: "arm64".into(),
+            protocols: vec![1, 2, 3, 9, 14],
+            features: vec![Feature {
+                name: "window_video".into(),
+                protocol: 14,
+            }],
+            max_frame: 65536,
+        },
+    }
+}
+#[test]
+fn live_session_drop_is_prompt_and_keeps_lease_until_exact_stop_finishes() {
+    use freelane::video::LiveSession;
+    use freelane_agent_protocol::{
+        video_control::{Operation, Reply},
+        Action, Outcome,
+    };
+    use std::sync::{atomic::Ordering, mpsc, Arc};
+    let f = Fixture::new();
+    let control = UnixListener::bind(f.dir.join("agent.sock")).unwrap();
+    let video = f.listener.try_clone().unwrap();
+    let (entered, waiting) = mpsc::channel();
+    let (release, blocked) = mpsc::channel();
+    let owner = thread::spawn(move || {
+        let mut parameters = None;
+        while parameters.is_none() {
+            serve_video_control(&control, |action| match action {
+                Action::Ping => video_info(),
+                Action::Video {
+                    operation: Operation::Start { parameters: p },
+                } => {
+                    assert_eq!(p.target, target());
+                    let mut peer = accept_video(&video);
+                    let mut record = config();
+                    record.binding = p.binding;
+                    write_record(&mut peer, &record).unwrap();
+                    record = frame(1, true);
+                    record.binding = p.binding;
+                    write_record(&mut peer, &record).unwrap();
+                    parameters = Some((p.clone(), peer));
+                    Outcome::Video {
+                        report: Reply::Started { parameters: p },
+                    }
+                }
+                _ => panic!("Unexpected startup mutation"),
+            });
+        }
+        let (parameters, _peer) = parameters.unwrap();
+        serve_video_control(&control, |action| {
+            assert_eq!(
+                action,
+                Action::Video {
+                    operation: Operation::Keyframe {
+                        binding: parameters.binding
+                    }
+                }
+            );
+            entered.send(()).unwrap();
+            blocked.recv_timeout(Duration::from_secs(3)).unwrap();
+            Outcome::Video {
+                report: Reply::KeyframeRequested {
+                    binding: parameters.binding,
+                },
+            }
+        });
+        serve_video_control(&control, |action| {
+            assert_eq!(
+                action,
+                Action::Video {
+                    operation: Operation::Stop {
+                        binding: parameters.binding
+                    }
+                }
+            );
+            Outcome::Video {
+                report: Reply::Stopped {
+                    binding: parameters.binding,
+                },
+            }
+        });
+    });
+    let live = LiveSession::start(&f.config, target(), Arc::new(|| {})).unwrap();
+    wait_until(|| live.configuration().is_some());
+    assert_eq!(live.target(), &target());
+    for _ in 0..1000 {
+        live.request_keyframe();
+    }
+    waiting.recv_timeout(Duration::from_secs(2)).unwrap();
+    let retired = live.retirement();
+    let before = Instant::now();
+    drop(live);
+    assert!(before.elapsed() < Duration::from_millis(100));
+    assert!(!retired.load(Ordering::Acquire));
+    assert!(VideoBroker::connect(&f.config, target(), binding()).is_err());
+    release.send(()).unwrap();
+    wait_until(|| retired.load(Ordering::Acquire));
+    owner.join().unwrap();
+    let (broker, _peer) = f.connect();
+    drop(broker);
+}
+#[test]
+fn uncertain_start_sends_only_its_own_stop_and_releases_broker() {
+    use freelane::video::LiveSession;
+    use freelane_agent_protocol::{
+        video_control::{Operation, Reply},
+        Action, Outcome,
+    };
+    use std::sync::Arc;
+    let f = Fixture::new();
+    let control = UnixListener::bind(f.dir.join("agent.sock")).unwrap();
+    let video = f.listener.try_clone().unwrap();
+    let owner = thread::spawn(move || {
+        let mut attempted = None;
+        while attempted.is_none() {
+            serve_video_control(&control, |action| match action {
+                Action::Ping => video_info(),
+                Action::Video {
+                    operation: Operation::Start { parameters },
+                } => {
+                    let peer = accept_video(&video);
+                    attempted = Some((parameters.binding, peer));
+                    let mut wrong = parameters;
+                    wrong.binding.generation += 1;
+                    Outcome::Video {
+                        report: Reply::Started { parameters: wrong },
+                    }
+                }
+                _ => panic!("Unexpected startup mutation"),
+            });
+        }
+        let (binding, _peer) = attempted.unwrap();
+        serve_video_control(&control, |action| {
+            assert_eq!(
+                action,
+                Action::Video {
+                    operation: Operation::Stop { binding }
+                }
+            );
+            Outcome::Video {
+                report: Reply::Stopped { binding },
+            }
+        });
+    });
+    assert!(LiveSession::start(&f.config, target(), Arc::new(|| {})).is_err());
+    owner.join().unwrap();
+    let (broker, _peer) = f.connect();
+    drop(broker);
+}
+
+fn accept_video(listener: &UnixListener) -> UnixStream {
+    listener.set_nonblocking(true).unwrap();
+    let deadline = Instant::now() + Duration::from_secs(2);
+    loop {
+        match listener.accept() {
+            Ok((peer, _)) => return peer,
+            Err(e) if e.kind() == std::io::ErrorKind::WouldBlock && Instant::now() < deadline => {
+                thread::sleep(Duration::from_millis(2))
+            }
+            Err(e) => panic!("Owned video accept failed: {e}"),
+        }
+    }
+}

@@ -14,7 +14,7 @@ fi
 xcrun --sdk macosx --show-sdk-path >/dev/null
 export MACOSX_DEPLOYMENT_TARGET=14.0
 rustup target add aarch64-apple-darwin
-cargo build --locked --release --target aarch64-apple-darwin -p freelane -p freelane-desktop
+cargo build --locked --release --target aarch64-apple-darwin -p freelane -p freelane-desktop --features freelane-desktop/native-video
 version="$(cargo metadata --locked --no-deps --format-version 1 | python3 -c 'import json,sys; print(next(p["version"] for p in json.load(sys.stdin)["packages"] if p["name"]=="freelane"))')"
 revision="$(git rev-parse --short=12 HEAD)"
 package_name="FreeLane-$version-$revision-macos-arm64"
