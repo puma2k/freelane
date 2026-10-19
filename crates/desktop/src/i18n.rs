@@ -10,6 +10,15 @@ impl Language {
             return english;
         }
         match english {
+            "New VM" => "Tạo máy ảo",
+            "Overview" => "Tổng quan",
+            "Sharing" => "Chia sẻ",
+            "Architecture" => "Kiến trúc",
+            "Operating system" => "Hệ điều hành",
+            "Not configured" => "Chưa cấu hình",
+            "Configure sharing" => "Cấu hình chia sẻ",
+            "No virtual machines" => "Chưa có máy ảo",
+            "No results" => "Không có kết quả",
             "Input queue full; new action was not sent"=>"Hàng đợi nhập đã đầy; thao tác mới chưa gửi.",
             "Guest did not return a window frame"=>"Guest không trả khung hình",
             "JPEG dimensions do not match the response"=>"JPEG và kích thước RPC không khớp",

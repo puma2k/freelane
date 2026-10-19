@@ -1,12 +1,14 @@
 use super::*;
-const ACCENT: egui::Color32 = egui::Color32::from_rgb(99, 82, 221);
+const ACCENT: egui::Color32 = egui::Color32::from_rgb(0, 112, 245);
 const INK: egui::Color32 = egui::Color32::from_rgb(30, 30, 30);
 const MUTED: egui::Color32 = egui::Color32::from_rgb(113, 116, 123);
 const BORDER: egui::Color32 = egui::Color32::from_rgb(224, 225, 230);
 #[derive(Default, PartialEq, Eq)]
 pub enum View {
     #[default]
+    Overview,
     Display,
+    Sharing,
     Applications,
     Details,
     Recovery,
@@ -36,44 +38,14 @@ fn primary(text: &str) -> egui::Button<'_> {
     .min_size(egui::vec2(110.0, 36.0))
 }
 fn icon(ui: &mut egui::Ui, os: GuestOs, size: f32) {
-    let (rect, _) = ui.allocate_exact_size(egui::vec2(size, size), egui::Sense::hover());
-    let color = match os {
-        GuestOs::Windows => egui::Color32::from_rgb(42, 133, 245),
-        GuestOs::Ubuntu => egui::Color32::from_rgb(237, 112, 49),
-    };
-    ui.painter().rect_filled(rect, 12, color);
-    let painter = ui.painter();
-    match os {
-        GuestOs::Windows => {
-            let panes = rect.shrink(size * 0.24);
-            let gap = size * 0.045;
-            let half = (panes.width() - gap) / 2.0;
-            for row in 0..2 {
-                for column in 0..2 {
-                    let origin = panes.min
-                        + egui::vec2(column as f32 * (half + gap), row as f32 * (half + gap));
-                    painter.rect_filled(
-                        egui::Rect::from_min_size(origin, egui::vec2(half, half)),
-                        1,
-                        egui::Color32::WHITE,
-                    );
-                }
-            }
-        }
-        GuestOs::Ubuntu => {
-            painter.circle_stroke(
-                rect.center(),
-                size * 0.19,
-                egui::Stroke::new(size * 0.055, egui::Color32::WHITE),
-            );
-            for index in 0..3 {
-                let angle = index as f32 * std::f32::consts::TAU / 3.0;
-                let point = rect.center() + egui::vec2(angle.cos(), angle.sin()) * size * 0.26;
-                painter.circle_filled(point, size * 0.085, color);
-                painter.circle_filled(point, size * 0.058, egui::Color32::WHITE);
-            }
-        }
-    }
+    interface_assets::image(
+        ui,
+        match os {
+            GuestOs::Windows => "windows",
+            GuestOs::Ubuntu => "ubuntu",
+        },
+        size,
+    );
 }
 pub fn install_style(ctx: &egui::Context) {
     let mut fonts = egui::FontDefinitions::default();
@@ -88,8 +60,36 @@ pub fn install_style(ctx: &egui::Context) {
         .entry(egui::FontFamily::Proportional)
         .or_default()
         .insert(0, "FreeLane UI".into());
+    fonts.font_data.insert(
+        "FreeLane semibold".into(),
+        std::sync::Arc::new(egui::FontData::from_static(include_bytes!(
+            "../assets/DejaVuSans-Bold.ttf"
+        ))),
+    );
+    let mut semibold_family = fonts.families[&egui::FontFamily::Proportional].clone();
+    semibold_family.insert(0, "FreeLane semibold".into());
+    fonts.families.insert(
+        egui::FontFamily::Name("FreeLane Semibold".into()),
+        semibold_family,
+    );
     #[cfg(target_os = "macos")]
     if let Ok(data) = std::fs::read("/System/Library/Fonts/SFNS.ttf") {
+        let mut semibold = egui::FontData::from_owned(data.clone());
+        if semibold
+            .variation_axes()
+            .iter()
+            .any(|axis| axis.tag.to_string() == "wght")
+        {
+            semibold.tweak.coords.push(b"wght", 600.0);
+            fonts
+                .font_data
+                .insert("macOS semibold".into(), std::sync::Arc::new(semibold));
+            fonts
+                .families
+                .get_mut(&egui::FontFamily::Name("FreeLane Semibold".into()))
+                .unwrap()
+                .insert(0, "macOS semibold".into());
+        }
         fonts.font_data.insert(
             "macOS system".into(),
             std::sync::Arc::new(egui::FontData::from_owned(data)),
@@ -103,35 +103,35 @@ pub fn install_style(ctx: &egui::Context) {
     ctx.set_fonts(fonts);
     ctx.set_theme(egui::Theme::Light);
     ctx.global_style_mut(|style| {
-        style.visuals.panel_fill = egui::Color32::from_rgb(248, 248, 250);
+        style.visuals.panel_fill = egui::Color32::from_rgb(255, 255, 255);
         style.visuals.window_fill = egui::Color32::WHITE;
         style.visuals.widgets.noninteractive.bg_fill = egui::Color32::WHITE;
         style.visuals.window_stroke = egui::Stroke::new(1.0, BORDER);
         style.visuals.window_corner_radius = egui::CornerRadius::same(12);
         style.visuals.extreme_bg_color = egui::Color32::from_rgb(243, 244, 246);
         style.visuals.override_text_color = Some(INK);
-        style.visuals.selection.bg_fill = egui::Color32::from_rgb(231, 225, 253);
+        style.visuals.selection.bg_fill = egui::Color32::from_rgb(218, 233, 255);
         style.visuals.selection.stroke = egui::Stroke::new(1.0, INK);
         style.visuals.widgets.inactive.weak_bg_fill = egui::Color32::from_rgb(239, 240, 243);
         style.visuals.widgets.hovered.weak_bg_fill = egui::Color32::from_rgb(226, 231, 239);
         style.visuals.widgets.inactive.corner_radius = egui::CornerRadius::same(6);
         style.visuals.widgets.hovered.corner_radius = egui::CornerRadius::same(6);
         style.visuals.widgets.active.corner_radius = egui::CornerRadius::same(6);
-        style.visuals.widgets.active.weak_bg_fill = egui::Color32::from_rgb(218, 210, 251);
+        style.visuals.widgets.active.weak_bg_fill = egui::Color32::from_rgb(214, 230, 252);
         style.spacing.item_spacing = egui::vec2(10.0, 9.0);
         style.spacing.button_padding = egui::vec2(13.0, 8.0);
         style
             .text_styles
-            .insert(egui::TextStyle::Body, egui::FontId::proportional(14.0));
+            .insert(egui::TextStyle::Body, egui::FontId::proportional(15.0));
         style
             .text_styles
-            .insert(egui::TextStyle::Button, egui::FontId::proportional(13.0));
+            .insert(egui::TextStyle::Button, egui::FontId::proportional(14.0));
         style
             .text_styles
-            .insert(egui::TextStyle::Small, egui::FontId::proportional(11.0));
+            .insert(egui::TextStyle::Small, egui::FontId::proportional(12.0));
         style
             .text_styles
-            .insert(egui::TextStyle::Heading, egui::FontId::proportional(24.0));
+            .insert(egui::TextStyle::Heading, egui::FontId::proportional(26.0));
     });
 }
 impl Desktop {
@@ -141,18 +141,16 @@ impl Desktop {
             .frame(
                 egui::Frame::new()
                     .fill(egui::Color32::WHITE)
-                    .inner_margin(12),
+                    .inner_margin(10),
             )
             .show(ui, |ui| {
                 ui.horizontal(|ui| {
                     ui.label(
                         egui::RichText::new("FreeLane")
-                            .size(22.0)
+                            .size(15.0)
                             .strong()
-                            .color(ACCENT),
+                            .color(INK),
                     );
-                    ui.separator();
-                    ui.colored_label(MUTED, lang.text("Control Center"));
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                         egui::ComboBox::from_id_salt("language")
                             .selected_text(if self.language == Language::Vietnamese {
@@ -176,153 +174,22 @@ impl Desktop {
                 });
             });
         egui::Panel::left("library")
-            .default_size(230.0)
-            .size_range(210.0..=300.0)
+            .default_size(300.0)
+            .size_range(210.0..=340.0)
             .frame(
                 egui::Frame::new()
-                    .fill(egui::Color32::from_rgb(244, 243, 249))
+                    .fill(egui::Color32::from_rgb(244, 245, 248))
                     .inner_margin(16),
             )
             .show(ui, |ui| {
-                ui.label(
-                    egui::RichText::new(lang.text("Virtual machines"))
-                        .strong()
-                        .color(MUTED),
-                );
-                ui.add_space(8.0);
-                ui.horizontal(|ui| {
-                    ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        if ui
-                            .button("×")
-                            .on_hover_text(lang.text("Clear search"))
-                            .clicked()
-                        {
-                            self.library_search.clear();
-                        }
-                        ui.add(
-                            egui::TextEdit::singleline(&mut self.library_search)
-                                .desired_width(ui.available_width())
-                                .hint_text(lang.text("Find virtual machines")),
-                        );
-                    });
-                });
-                let query = self.library_search.trim().to_lowercase();
-                let mut chosen = None;
-                let mut repair = None;
-                egui::ScrollArea::vertical()
-                    .max_height((ui.available_height() - 140.0).max(120.0))
-                    .show(ui, |ui| {
-                        for (path, name, os) in &self.library {
-                            let guest = match os {
-                                GuestOs::Windows => "windows",
-                                GuestOs::Ubuntu => "ubuntu",
-                            };
-                            if !query.is_empty()
-                                && !name.to_lowercase().contains(&query)
-                                && !guest.contains(&query)
-                            {
-                                continue;
-                            }
-
-                            let selected = self.vm.as_ref().is_some_and(|vm| vm.path == *path);
-                            let response = egui::Frame::new()
-                                .fill(if selected {
-                                    egui::Color32::from_rgb(230, 224, 251)
-                                } else {
-                                    egui::Color32::from_rgb(244, 243, 249)
-                                })
-                                .stroke(egui::Stroke::new(1.0, egui::Color32::TRANSPARENT))
-                                .corner_radius(8)
-                                .inner_margin(10)
-                                .show(ui, |ui| {
-                                    ui.set_min_width(ui.available_width());
-                                    ui.horizontal(|ui| {
-                                        icon(ui, *os, 38.0);
-                                        ui.vertical(|ui| {
-                                            ui.add(
-                                                egui::Label::new(
-                                                    egui::RichText::new(name).strong(),
-                                                )
-                                                .truncate(),
-                                            );
-                                            ui.small(match os {
-                                                GuestOs::Windows => "Windows · ARM64",
-                                                GuestOs::Ubuntu => "Ubuntu · ARM64",
-                                            });
-                                        });
-                                    });
-                                })
-                                .response;
-                            if ui
-                                .interact(
-                                    response.rect,
-                                    response.id.with("select"),
-                                    egui::Sense::click(),
-                                )
-                                .clicked()
-                                && self.pending.is_none()
-                                && self.child.is_none()
-                                && !self.settings_open
-                            {
-                                chosen = Some(path.clone());
-                            }
-                            if ui
-                                .add_enabled(
-                                    self.pending.is_none()
-                                        && self.child.is_none()
-                                        && !self.settings_open,
-                                    egui::Button::new(lang.text("Locate VM")),
-                                )
-                                .clicked()
-                            {
-                                repair = Some(path.clone());
-                            }
-                            ui.add_space(4.0);
-                        }
-                    });
-                if let Some(path) = repair {
-                    self.repair_bookmark(ctx, path);
-                }
-                if let Some(path) = chosen {
-                    self.draft_path = path.display().to_string();
-                    self.open(ctx);
-                }
-                if ui
-                    .add_enabled(
-                        self.pending.is_none() && self.child.is_none() && !self.settings_open,
-                        egui::Button::new(lang.text("Add virtual machine")),
-                    )
-                    .clicked()
-                {
-                    self.open_dialog = true;
-                }
-                if ui
-                    .add_enabled(
-                        self.pending.is_none() && self.child.is_none(),
-                        egui::Button::new(lang.text("Create virtual machine")),
-                    )
-                    .clicked()
-                {
-                    self.wizard.begin();
-                }
-                if ui
-                    .add_enabled(
-                        self.pending.is_none(),
-                        egui::Button::new(lang.text("Restore virtual machine")),
-                    )
-                    .clicked()
-                {
-                    self.view = View::Recovery;
-                }
-                if ui.button(lang.text("Android & iOS")).clicked() {
-                    self.mobile_open = true;
-                }
+                ui.set_min_width(ui.available_width());
+                self.library_ui(ui, ctx);
             });
         egui::CentralPanel::default()
             .frame(
                 egui::Frame::new()
-                    .fill(egui::Color32::from_rgb(248, 248, 250))
-                    .inner_margin(24),
+                    .fill(egui::Color32::from_rgb(255, 255, 255))
+                    .inner_margin(28),
             )
             .show(ui, |ui| {
                 let viewport_height = ui.available_height();
@@ -346,6 +213,9 @@ impl Desktop {
                             ui.add_space(18.0);
                             if ui.add(primary(lang.text("Open virtual machine"))).clicked() {
                                 self.open_dialog = true;
+                            }
+                            if ui.button(lang.text("Restore virtual machine")).clicked() {
+                                self.view = View::Recovery;
                             }
                         });
                     }
@@ -407,10 +277,9 @@ impl Desktop {
         self.settings_ui(ctx);
     }
     fn machine_ui(&mut self, ui: &mut egui::Ui, ctx: &egui::Context, viewport_height: f32) {
-        let content_top = ui.cursor().top();
         let lang = self.language;
         let vm = self.vm.as_ref().unwrap();
-        let (name, os, cpus, memory, agent_enabled, path, acceleration, graphics) = (
+        let (name, os, cpus, memory, agent_enabled, path, acceleration) = (
             vm.name.clone(),
             vm.guest_os,
             vm.cpus,
@@ -418,147 +287,144 @@ impl Desktop {
             vm.guest_agent,
             vm.path.clone(),
             vm.acceleration,
-            vm.config
-                .runtime
-                .as_ref()
-                .map(|r| r.graphics)
-                .unwrap_or_default(),
         );
-        egui::Frame::new()
-            .fill(egui::Color32::from_rgb(235, 231, 253))
-            .corner_radius(22)
-            .inner_margin(24)
-            .show(ui, |ui| {
-                ui.set_min_width(ui.available_width());
-                ui.horizontal(|ui| {
-                    icon(ui, os, 72.0);
-                    ui.add_space(10.0);
-                    ui.vertical(|ui| {
-                        ui.label(
-                            egui::RichText::new(lang.text(match os {
-                                GuestOs::Windows => "Windows workspace",
-                                GuestOs::Ubuntu => "Ubuntu workspace",
-                            }))
-                            .size(11.0)
-                            .color(ACCENT)
-                            .strong(),
+        let busy = self.pending.is_some();
+        let compact = ui.available_width() < 650.0;
+        ui.horizontal(|ui| {
+            icon(ui, os, if compact { 44.0 } else { 64.0 });
+            ui.add_space(8.0);
+            let actions = if compact { 0.0 } else { 310.0 };
+            let title_width = (ui.available_width() - actions).max(90.0);
+            ui.allocate_ui_with_layout(
+                egui::vec2(title_width, 65.0),
+                egui::Layout::top_down(egui::Align::Min),
+                |ui| {
+                    ui.set_min_width(title_width);
+                    ui.add(
+                        egui::Label::new(
+                            interface_assets::semibold(&name)
+                                .size(if compact { 23.0 } else { 32.0 })
+                                .strong(),
+                        )
+                        .truncate(),
+                    );
+                    ui.horizontal(|ui| {
+                        ui.painter().circle_filled(
+                            ui.cursor().min + egui::vec2(5.0, 8.0),
+                            4.0,
+                            if self.status == "running" {
+                                egui::Color32::from_rgb(35, 154, 100)
+                            } else {
+                                MUTED
+                            },
                         );
-                        ui.label(egui::RichText::new(name).size(30.0).strong());
-                        ui.colored_label(
-                            MUTED,
-                            format!(
-                                "{} · {}",
-                                lang.text("Last observed state"),
-                                lang.text(&self.status)
-                            ),
+                        ui.add_space(16.0);
+                        ui.add(
+                            egui::Label::new(
+                                egui::RichText::new(lang.text(&self.status)).color(MUTED),
+                            )
+                            .truncate(),
                         );
                     });
-                });
-            });
-        ui.add_space(12.0);
-        let busy = self.pending.is_some();
-        ui.horizontal_wrapped(|ui| {
-            if ui
-                .add_enabled(
-                    !busy
-                        && self.child.is_none()
-                        && self.status != "running"
-                        && self.status != "paused",
-                    primary(lang.text("Start")),
-                )
-                .clicked()
-            {
-                self.start();
-            }
-            for (label, action, allowed) in [
-                ("Pause", "pause", self.status == "running"),
-                ("Resume", "resume", self.status == "paused"),
-                (
-                    "Shutdown",
-                    "shutdown",
-                    matches!(self.status.as_str(), "running" | "paused"),
-                ),
-                ("Refresh status", "status", true),
-            ] {
-                if !allowed {
-                    continue;
-                }
-                if ui
-                    .add_enabled(!busy, egui::Button::new(lang.text(label)))
-                    .clicked()
-                {
-                    self.control(ctx, action);
-                }
-            }
-            if ui
-                .add_enabled(!busy, egui::Button::new(lang.text("Settings")))
-                .clicked()
-            {
-                self.notice.clear();
-                self.resource_capacity = freelane::resource_presets::HostCapacity::detect();
-                self.settings_open = true;
+                },
+            );
+            if !compact {
+                self.machine_actions(ui, ctx, false);
             }
         });
-        ui.add_space(10.0);
-        let width = ((ui.available_width() - 24.0) / 3.0 - 34.0).max(90.0);
-        ui.horizontal_wrapped(|ui| {
-            for (index, (label, value)) in [
-                ("Virtual CPUs", cpus.to_string()),
-                ("Memory", format!("{:.1} GiB", memory as f64 / 1024.0)),
+        if compact {
+            ui.horizontal_wrapped(|ui| {
+                self.machine_actions(ui, ctx, true);
+            });
+        }
+        ui.add_space(18.0);
+        if matches!(self.view, View::Overview | View::Display) {
+            self.preview_ui(ui, ctx, viewport_height);
+            ui.add_space(18.0);
+        }
+        let column = ((ui.available_width() - 48.0) / 3.0).max(90.0);
+        ui.horizontal(|ui| {
+            for (symbol, value, label) in [
+                ("cpu", cpus.to_string(), "Virtual CPUs"),
                 (
-                    "Graphics",
-                    lang.text(if graphics == qemu::Graphics::Virtio2d {
-                        "Virtio GPU · 2D"
-                    } else {
-                        "Basic display"
-                    })
-                    .to_owned(),
+                    "display",
+                    format!("{} GiB", memory as f64 / 1024.0),
+                    "Memory",
                 ),
-            ]
-            .into_iter()
-            .enumerate()
-            {
-                let tint = [
-                    egui::Color32::from_rgb(231, 239, 255),
-                    egui::Color32::from_rgb(232, 245, 237),
-                    egui::Color32::from_rgb(255, 240, 228),
-                ][index];
-                egui::Frame::new()
-                    .fill(tint)
-                    .corner_radius(16)
-                    .inner_margin(16)
-                    .show(ui, |ui| {
-                        ui.set_min_width(width);
+                ("cpu", "ARM64".to_owned(), "Architecture"),
+            ] {
+                ui.allocate_ui(egui::vec2(column, 48.0), |ui| {
+                    ui.set_min_width(column);
+                    ui.horizontal(|ui| {
+                        interface_assets::image(ui, symbol, 26.0);
+                        ui.add_space(4.0);
                         ui.vertical(|ui| {
-                            ui.colored_label(
-                                MUTED,
-                                egui::RichText::new(lang.text(label)).size(12.0),
-                            );
-                            ui.add_space(3.0);
-                            ui.label(egui::RichText::new(value).strong().size(19.0));
+                            ui.label(interface_assets::semibold(value).size(17.0));
+                            ui.colored_label(MUTED, lang.text(label));
                         });
                     });
+                });
             }
         });
-        ui.add_space(14.0);
-        ui.horizontal(|ui| {
-            ui.selectable_value(&mut self.view, View::Display, lang.text("Display"));
+        ui.add_space(18.0);
+        ui.horizontal_wrapped(|ui| {
+            ui.selectable_value(&mut self.view, View::Overview, lang.text("Overview"));
+            ui.selectable_value(&mut self.view, View::Sharing, lang.text("Sharing"));
             ui.selectable_value(
                 &mut self.view,
                 View::Applications,
                 lang.text("Applications"),
             );
+            ui.selectable_value(&mut self.view, View::Display, lang.text("Display"));
             ui.selectable_value(&mut self.view, View::Details, lang.text("Details"));
-            ui.selectable_value(&mut self.view, View::Recovery, lang.text("Backups"));
         });
-        ui.add_space(10.0);
+        ui.add_space(8.0);
+        ui.separator();
+        ui.add_space(16.0);
         match self.view {
-            View::Display => {
+            View::Overview => {
+                ui.columns(if compact { 1 } else { 2 }, |columns| {
+                    egui::Grid::new("vm-overview")
+                        .spacing(egui::vec2(24.0, 12.0))
+                        .show(&mut columns[0], |ui| {
+                            for (label, value) in [
+                                (
+                                    "Operating system",
+                                    match os {
+                                        GuestOs::Windows => "Windows",
+                                        GuestOs::Ubuntu => "Ubuntu",
+                                    }
+                                    .to_owned(),
+                                ),
+                                ("Architecture", "ARM64".to_owned()),
+                                ("Virtual CPUs", cpus.to_string()),
+                                ("Memory", format!("{} GiB", memory as f64 / 1024.0)),
+                            ] {
+                                ui.colored_label(MUTED, lang.text(label));
+                                ui.label(value);
+                                ui.end_row();
+                            }
+                        });
+                    let index = columns.len() - 1;
+                    if compact {
+                        columns[index].add_space(20.0);
+                    }
+                    self.shared_folder_row(&mut columns[index], ctx);
+                });
+            }
+            View::Sharing => {
+                self.shared_folder_row(ui, ctx);
+                ui.add_space(16.0);
                 self.clipboard_ui(ui, ctx);
                 self.transfer_ui(ui, ctx);
+            }
+            View::Display => {
                 ui.horizontal_wrapped(|ui| {
                     if ui
-                        .add_enabled(!busy, egui::Button::new(lang.text("Refresh display")))
+                        .add_enabled(
+                            !busy,
+                            interface_assets::button(ctx, "refresh", lang.text("Refresh display")),
+                        )
                         .on_hover_text(lang.text("Snapshots, not live video"))
                         .clicked()
                     {
@@ -571,93 +437,6 @@ impl Desktop {
                         self.display_at = None;
                     }
                 });
-                let height =
-                    (viewport_height - (ui.cursor().top() - content_top) - 85.0).max(150.0);
-                egui::Frame::new()
-                    .fill(if self.texture.is_some() {
-                        egui::Color32::from_rgb(29, 36, 49)
-                    } else {
-                        egui::Color32::WHITE
-                    })
-                    .stroke(egui::Stroke::new(1.0, BORDER))
-                    .corner_radius(12)
-                    .inner_margin(14)
-                    .show(ui, |ui| {
-                        ui.set_min_width(ui.available_width());
-                        if let Some(texture) = &self.texture {
-                            let frame = ui.add(
-                                egui::Image::new(texture)
-                                    .max_size(egui::vec2(ui.available_width(), height - 28.0))
-                                    .sense(egui::Sense::click()),
-                            );
-                            if frame.clicked() && self.pending.is_none() && self.status == "running"
-                            {
-                                if let Some(point) = frame.interact_pointer_pos() {
-                                    let x = ((point.x - frame.rect.left()) / frame.rect.width()
-                                        * 32767.0)
-                                        .clamp(0.0, 32767.0)
-                                        .round() as u16;
-                                    let y = ((point.y - frame.rect.top()) / frame.rect.height()
-                                        * 32767.0)
-                                        .clamp(0.0, 32767.0)
-                                        .round() as u16;
-                                    self.click(ctx, x, y);
-                                }
-                            }
-                        } else {
-                            ui.allocate_ui(egui::vec2(ui.available_width(), height - 28.0), |ui| {
-                                ui.with_layout(egui::Layout::top_down(egui::Align::Center), |ui| {
-                                    ui.add_space(((height - 230.0) / 2.0).max(12.0));
-                                    let (rect, _) = ui.allocate_exact_size(
-                                        egui::vec2(150.0, 100.0),
-                                        egui::Sense::hover(),
-                                    );
-                                    let painter = ui.painter();
-                                    painter.circle_filled(
-                                        rect.center() + egui::vec2(-35.0, -5.0),
-                                        48.0,
-                                        egui::Color32::from_rgb(238, 234, 253),
-                                    );
-                                    painter.circle_filled(
-                                        rect.center() + egui::vec2(40.0, 0.0),
-                                        35.0,
-                                        egui::Color32::from_rgb(226, 239, 253),
-                                    );
-                                    let screen = egui::Rect::from_center_size(
-                                        rect.center() - egui::vec2(0.0, 8.0),
-                                        egui::vec2(100.0, 65.0),
-                                    );
-                                    painter.rect_filled(screen, 10, egui::Color32::WHITE);
-                                    painter.rect_stroke(
-                                        screen,
-                                        10,
-                                        egui::Stroke::new(2.0, ACCENT),
-                                        egui::StrokeKind::Inside,
-                                    );
-                                    painter.line_segment(
-                                        [
-                                            rect.center() + egui::vec2(0.0, 25.0),
-                                            rect.center() + egui::vec2(0.0, 38.0),
-                                        ],
-                                        egui::Stroke::new(3.0, ACCENT),
-                                    );
-                                    painter.line_segment(
-                                        [
-                                            rect.center() + egui::vec2(-18.0, 39.0),
-                                            rect.center() + egui::vec2(18.0, 39.0),
-                                        ],
-                                        egui::Stroke::new(3.0, ACCENT),
-                                    );
-                                    ui.add_space(14.0);
-                                    ui.label(
-                                        egui::RichText::new(lang.text("No display snapshot yet"))
-                                            .size(20.0)
-                                            .strong(),
-                                    );
-                                });
-                            });
-                        }
-                    });
             }
             View::Applications => {
                 card().show(ui, |ui| {
@@ -1010,6 +789,7 @@ mod recovery_access_tests {
     }
     fn rendered(mut desktop: Desktop) -> String {
         let ctx = egui::Context::default();
+        install_style(&ctx);
         let mut output = ctx.run_ui(
             egui::RawInput {
                 screen_rect: Some(egui::Rect::from_min_size(
