@@ -154,7 +154,28 @@ impl Encoder for ProcessEncoder {
         self.wait_stage(Stage::Active)
     }
     fn running(&mut self) -> io::Result<bool> {
-        self.pump()?;
+        if self
+            .owned
+            .as_mut()
+            .is_some_and(|owned| matches!(owned.child.try_wait(), Ok(Some(_))))
+        {
+            return Ok(false);
+        }
+        if let Err(error) = self.pump() {
+            if matches!(
+                error.kind(),
+                io::ErrorKind::UnexpectedEof | io::ErrorKind::BrokenPipe
+            ) {
+                // A closed status pipe is no longer a healthy session, even if
+                // the process is still finishing exit. Keep ownership until Stop
+                // confirms cleanup; Session can then start a fresh binding.
+                if let Some(owned) = &mut self.owned {
+                    owned.stage = Stage::Failed;
+                }
+                return Ok(false);
+            }
+            return Err(error);
+        }
         match self.owned.as_mut() {
             Some(owned) => Ok(owned.stage == Stage::Active && owned.child.try_wait()?.is_none()),
             None => Ok(false),
@@ -166,12 +187,17 @@ impl Encoder for ProcessEncoder {
         };
         owned.stage = Stage::Failed;
         owned.input.take(); // EOF is a graceful request; killing is bounded fallback.
-        if owned.child.try_wait()?.is_none() {
-            owned.child.kill()?;
-        }
+        let kill_error = if owned.child.try_wait()?.is_none() {
+            owned.child.kill().err()
+        } else {
+            None
+        };
         let end = Instant::now() + Duration::from_secs(2);
         while owned.child.try_wait()?.is_none() {
             if Instant::now() >= end {
+                if let Some(error) = kill_error {
+                    return Err(error);
+                }
                 return Err(io::Error::new(
                     io::ErrorKind::TimedOut,
                     "Native worker cleanup remains uncertain",

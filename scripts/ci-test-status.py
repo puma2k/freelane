@@ -24,6 +24,12 @@ def broker_panic_lines(text):
         text, re.MULTILINE)})
 
 
+def slow_test_names(text, allowed):
+    return sorted({name.split("::")[-1] for name in re.findall(
+        r"test ([A-Za-z0-9_:]+) has been running for over [0-9]+ seconds", text)
+        if name.split("::")[-1] in allowed})
+
+
 def main():
     commands = {
         "portable": ["cargo", "test", "--locked", "--workspace", "--no-fail-fast"],
@@ -41,11 +47,16 @@ def main():
     failed = set()
     error_codes = set()
     broker_lines = set()
+    slow = set()
     # Preserve the existing command's console output; new annotations contain names only.
     for line in iter(process.stdout.readline, b""):
         sys.stdout.buffer.write(line)
         sys.stdout.buffer.flush()
         text = line.decode(errors="replace")
+        for name in slow_test_names(text, allowed):
+            if name not in slow:
+                print("::warning title=Slow test status::" + name, flush=True)
+                slow.add(name)
         failed.update(failed_test_names(text, allowed))
         broker_lines.update(broker_panic_lines(text))
         error_codes.update(int(n) for n in re.findall(r"\(os error ([0-9]{1,3})\)", text) if 0 < int(n) <= 133)

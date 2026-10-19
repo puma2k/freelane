@@ -9,6 +9,11 @@ spec.loader.exec_module(status)
 
 
 class DiagnosticsTests(unittest.TestCase):
+    def test_only_allowlisted_slow_tests_are_reported(self):
+        self.assertEqual(status.slow_test_names(
+            "test helper_handshake has been running for over 60 seconds", {'helper_handshake'}), ['helper_handshake'])
+        self.assertEqual(status.slow_test_names(
+            "test user_payload has been running for over 60 seconds", {'helper_handshake'}), [])
     def test_only_allowlisted_broker_source_locations_are_reported(self):
         self.assertEqual(status.broker_panic_lines(
             "thread 'broker_test' (123) panicked at tests/video_broker.rs:261:23:"), [261])

@@ -7,6 +7,24 @@ use std::{
     sync::atomic::{AtomicUsize, Ordering},
     time::{Duration, Instant},
 };
+struct OwnedFixture(std::process::Child);
+impl std::ops::Deref for OwnedFixture {
+    type Target = std::process::Child;
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+impl std::ops::DerefMut for OwnedFixture {
+    fn deref_mut(&mut self) -> &mut Self::Target {
+        &mut self.0
+    }
+}
+impl Drop for OwnedFixture {
+    fn drop(&mut self) {
+        let _ = self.0.kill();
+        let _ = self.0.wait();
+    }
+}
 fn parameters() -> Parameters {
     Parameters {
         target: WindowTarget {
@@ -67,12 +85,14 @@ fn worker_command(mode: &str) -> Command {
 
 #[test]
 fn helper_handshake_stop_and_keyframe_coalescing_preserve_other_process() {
-    let mut other = worker_command("unrelated")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .unwrap();
+    let mut other = OwnedFixture(
+        worker_command("unrelated")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap(),
+    );
     let mut backend = ProcessEncoder::new(worker_command("normal"), authorize);
     assert!(backend.available());
     backend.start(&parameters()).unwrap();
@@ -106,6 +126,24 @@ fn authorization_is_rechecked_between_ready_and_go() {
     assert_eq!(CHECKS.load(Ordering::SeqCst), 2);
 }
 #[test]
+fn confirmed_worker_exit_is_stopped_not_a_malformed_status() {
+    let mut backend = ProcessEncoder::new(worker_command("end_after_key"), authorize);
+    backend.start(&parameters()).unwrap();
+    backend.keyframe().unwrap();
+    let end = Instant::now() + Duration::from_secs(2);
+    loop {
+        match backend.running() {
+            Ok(false) => break,
+            Ok(true) => {
+                assert!(Instant::now() < end);
+                std::thread::sleep(Duration::from_millis(10));
+            }
+            Err(e) => panic!("Ended worker should permit an explicit fresh session: {e}"),
+        }
+    }
+    backend.stop().unwrap();
+}
+#[test]
 fn drop_closes_owned_resources_without_terminating_another_process() {
     let listener = std::net::TcpListener::bind(("127.0.0.1", 0)).unwrap();
     let mut command = worker_command("normal");
@@ -113,18 +151,45 @@ fn drop_closes_owned_resources_without_terminating_another_process() {
         "FREELANE_FIXTURE_SOCKET",
         listener.local_addr().unwrap().to_string(),
     );
-    let mut other = worker_command("unrelated")
-        .stdin(Stdio::null())
-        .stdout(Stdio::null())
-        .stderr(Stdio::null())
-        .spawn()
-        .unwrap();
+    let mut other = OwnedFixture(
+        worker_command("unrelated")
+            .stdin(Stdio::null())
+            .stdout(Stdio::null())
+            .stderr(Stdio::null())
+            .spawn()
+            .unwrap(),
+    );
     let mut backend = ProcessEncoder::new(command, authorize);
     backend.start(&parameters()).unwrap();
-    let (mut peer, _) = listener.accept().unwrap();
+    listener.set_nonblocking(true).unwrap();
+    let until = Instant::now() + Duration::from_secs(2);
+    let mut peer = loop {
+        match listener.accept() {
+            Ok((peer, _)) => break peer,
+            Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                assert!(
+                    Instant::now() < until,
+                    "Owned fixture did not establish its socket"
+                );
+                std::thread::sleep(Duration::from_millis(5));
+            }
+            Err(error) => panic!("Owned fixture socket failed: {error}"),
+        }
+    };
     peer.set_read_timeout(Some(Duration::from_secs(2))).unwrap();
     drop(backend);
-    assert_eq!(peer.read(&mut [0]).unwrap(), 0);
+    let closed = match peer.read(&mut [0]) {
+        Ok(0) => true,
+        Err(error) => matches!(
+            error.kind(),
+            io::ErrorKind::ConnectionReset | io::ErrorKind::ConnectionAborted
+        ),
+        _ => false,
+    };
+    assert!(
+        closed,
+        "Owned worker retained its fixture socket after Drop"
+    );
     assert!(other.try_wait().unwrap().is_none());
     other.kill().unwrap();
     other.wait().unwrap();
