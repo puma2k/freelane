@@ -1,0 +1,38 @@
+{
+  "source_commit": "aa18d08",
+  "run_url": "https://github.com/puma2k/freelane/actions/runs/39190796705",
+  "native_workflow_status": "Success",
+  "guest_app_viewer_enabled": false,
+  "virtio_driver_end_to_end_verified": false,
+  "windows_workers": [
+    {
+      "pictures": 90,
+      "captured_frames": 90,
+      "idrs": 2,
+      "max_pending": 2,
+      "width": 306,
+      "height": 172,
+      "lifecycle_failures": 3
+    },
+    {
+      "pictures": 90,
+      "captured_frames": 90,
+      "idrs": 2,
+      "max_pending": 2,
+      "width": 306,
+      "height": 172,
+      "lifecycle_failures": 3
+    }
+  ],
+  "deadline_notices": 2,
+  "guest_adapter_source_commit": "c726a4b",
+  "repository_ci_url": "https://github.com/puma2k/freelane/actions/runs/39191978602",
+  "repository_ci_status": "Success",
+  "local_rust": {
+    "passed": 267,
+    "failed": 0,
+    "ignored": 9
+  },
+  "portable_video_tests": 15,
+  "mcp_tests": 14
+}
