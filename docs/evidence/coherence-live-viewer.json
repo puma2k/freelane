@@ -1,0 +1,56 @@
+{
+  "schema": 1,
+  "source_commit": "54d27aa",
+  "native_run": "https://github.com/puma2k/freelane/actions/runs/39216051037",
+  "source_ci_run": "https://github.com/puma2k/freelane/actions/runs/39216051154",
+  "native_status": "Success",
+  "source_ci_status": "success",
+  "live_viewer": {
+    "decoded": 30,
+    "encoded_fixture_frames_sent": 30,
+    "hardware": true,
+    "normal_viewer_video_state": true,
+    "onscreen_pixels_verified": false,
+    "presented": 29,
+    "real_guest_vm": false,
+    "serial_socket_transport": true,
+    "stop_acknowledged": true
+  },
+  "windows_worker": {
+    "pictures": 90,
+    "captured_frames": 90,
+    "idrs": 2,
+    "max_pending": 2,
+    "width": 304,
+    "height": 140,
+    "lifecycle_failures": 3
+  },
+  "sdk_surface": {
+    "asynchronous_close_cycles": 8,
+    "copy_path_measured": false,
+    "decoded": 30,
+    "embedded_view": true,
+    "hardware": true,
+    "nv12": true,
+    "onscreen_pixels_verified": false,
+    "pixel_variation": true,
+    "presented": 30,
+    "production_cpu_readback": false
+  },
+  "package_run": "https://github.com/puma2k/freelane/actions/runs/39195858288",
+  "package_status": "success",
+  "rust_tests": {
+    "passed": 284,
+    "failed": 0,
+    "ignored": 9
+  },
+  "video_tests": 16,
+  "mcp_tests": 14,
+  "review_important_fixed": 3,
+  "deferred_minors": [],
+  "physical_mac_acceptance": false,
+  "real_guest_vm_video_acceptance": false,
+  "onscreen_pixels_verified": false,
+  "sustained_performance_measured": false,
+  "popup_compositing_verified": false
+}

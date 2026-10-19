@@ -13,10 +13,11 @@ image. Closing detaches immediately, prevents further presentation, and drains
 asynchronous decoder callbacks off the UI thread before releasing the single
 process decoder budget.
 
-The normal app viewer still uses its existing image path. This feature is a
-renderer integration step; session control, guest helper distribution and live
-viewer activation remain separate work. In particular, Windows capture must use
-the same client-area geometry as pointer input before that activation.
+This renderer milestone originally kept the normal viewer on its image path.
+The subsequent [live viewer integration](coherence-live-viewer.md) enables it in
+Mac release builds, adds session control and guest helper packaging, and aligns
+Windows capture with client-area pointer input. The native evidence below
+records this earlier renderer milestone independently.
 
 ## Validation
 
@@ -37,7 +38,7 @@ not runtime evidence.
 
 These checks do not measure displayed screen pixels, end-to-end latency,
 zero-copy behavior, sustained user-workload frame rate, or physical-Mac
-sleep/wake. The normal app does not advertise live video on this evidence.
+sleep/wake. The renderer fixture alone does not establish live-session or performance acceptance.
 
 Native acceptance run [39194465704](https://github.com/puma2k/freelane/actions/runs/39194465704)
 on source `347140e` passed: Swift decoded/presented 30/30 with eight asynchronous

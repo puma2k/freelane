@@ -44,7 +44,7 @@ cargo run --locked -- agent-ping /absolute/path/to/vm.toml
 cargo run --locked -- launch /absolute/path/to/vm.toml 'C:\Windows\System32\notepad.exe' 'C:\Users\User\Documents\notes.txt'
 ```
 
-Launch uses an absolute `.exe` path and a literal argument list via Windows process creation. It does not automatically wrap commands in `cmd.exe` or PowerShell. The returned PID means process creation succeeded, not that its UI opened or stayed healthy. Child stdin/stdout/stderr are disconnected from the agent protocol; console output and interactive terminal sessions are not streamed. Apps render in Windows. An optional [separate-window snapshot viewer and Dock launcher](app-windows.md) can present ordinary Win32 client windows on the host with an updated agent.
+Launch uses an absolute `.exe` path and a literal argument list via Windows process creation. It does not automatically wrap commands in `cmd.exe` or PowerShell. The returned PID means process creation succeeded, not that its UI opened or stayed healthy. Child stdin/stdout/stderr are disconnected from the agent protocol; console output and interactive terminal sessions are not streamed. Apps render in Windows. An optional [separate-window video/snapshot viewer and Dock launcher](app-windows.md) can present ordinary Win32 client windows on the host with an updated agent.
 
 A host response timeout leaves execution outcome unknown. The client does not automatically retry launch requests, which could otherwise open a second process.
 

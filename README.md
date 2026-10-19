@@ -39,7 +39,7 @@ See [Windows evidence](docs/test-evidence.md), [Ubuntu evidence](docs/ubuntu-tes
 - Mobile device controls, app installation/launch and actual PNG snapshots.
 - CLI and **22 stdio MCP tools** for fixed build/test jobs, registered VM/mobile controls, captures and guest requests.
 
-The desktop displays snapshots, with optional refresh for desktop VMs. Continuous VM video and full keyboard forwarding are pending; use backend native windows for desktop input. The experimental [Windows app viewer](docs/app-windows.md) supports separate snapshot windows, targeted pointer gestures/text, guarded shortcuts, explicit window sizing and named Dock launchers with an updated guest agent. Physical USB selectors are implemented but need hardware testing. Windows two-way folder sharing, accelerated 3D/Metal, Apple GPU passthrough and live Coherence-style app integration remain pending.
+The desktop displays snapshots, with optional refresh for desktop VMs. Continuous VM video and full keyboard forwarding are pending; use backend native windows for desktop input. The experimental [Windows app viewer](docs/app-windows.md) supports separate Mac windows with hardware-decoded H.264 video and snapshot fallback, targeted pointer gestures/text, guarded shortcuts, window sizing and Dock launchers. Live video requires the matching Windows agent/helper package and the VM video port. Physical USB selectors are implemented but need hardware testing. Windows two-way folder sharing, accelerated 3D/Metal, Apple GPU passthrough and full Coherence parity remain pending. Native CI exercises captured Windows packets through the Mac viewer; sustained performance and installed-VM behavior still need physical-Mac testing.
 
 ## Download an experimental build
 

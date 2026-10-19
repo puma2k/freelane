@@ -2,6 +2,16 @@
 
 Download the Windows ARM64 agent ZIP and its SHA256 file from the same trusted FreeLane release. Verify the ZIP checksum before extracting it; the package includes `freelane-guest-agent.exe.sha256` and the lifecycle helper. Run PowerShell as the ordinary interactive Windows user. Driver installation is separate.
 
+For the complete matching agent/video package, use the single setup flow:
+
+```powershell
+powershell.exe -NoProfile -File .\setup-windows-agent.ps1
+```
+
+It validates both packaged checksums and installs the native ARM64 helper beside the agent using a content-hash filename recorded in `agent-install.json`. Updating preserves the previous agent/helper pair for rollback. Stop the installed agent first; sign in again afterward. Uninstall removes the current managed helper and preserves backups/unrelated files. Modified installed bytes are refused rather than overwritten. Native ARM64 CI builds/extracts this same ZIP, runs helper capture and verifies setup/uninstall.
+
+The advanced commands below can install an agent alone (snapshot fallback), or preserve an existing verified helper during update. To supply a new helper explicitly, add `-VideoHelperPath .\freelane-video-helper.exe -ExpectedVideoSha256 <trusted-helper-sha256>` to Install/Update.
+
 ```powershell
 $hash = (Get-Content -LiteralPath '.\freelane-guest-agent.exe.sha256').Split()[0]
 .\install-windows-agent.ps1 -Action Install -AgentPath '.\freelane-guest-agent.exe' -ExpectedSha256 $hash

@@ -60,3 +60,17 @@ Record end-to-end transport/presentation evidence separately from file fixtures.
 Physical Mac real-app video, input alignment at multiple DPI/zoom levels,
 sleep/wake and sustained CPU/latency measurements remain explicit acceptance
 checks; a successful file decoder cannot mark them complete.
+
+## Implementation outcome
+
+Tasks 1–3 are implemented. Source `54d27aa` passed full checks and native
+Windows/Mac integration CI. The final review's three Important findings each
+reproduced as failing regressions, then passed with the complete suite: fresh
+stream identity after retirement, silent-open-socket expiration, and attempt
+revision correlation. No deferred Minor findings. Native-view/popup overlap was
+not established by review and stays an explicit physical-Mac check.
+
+[Evidence and remaining acceptance](../../coherence-live-viewer.md) distinguish
+owned socket emulation from a real Windows VM. The authorized physical-Mac
+acceptance remains pending; implementation completion does not claim performance
+or Parallels parity.

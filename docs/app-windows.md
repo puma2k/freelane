@@ -1,25 +1,28 @@
 # Windows app windows and Dock launchers
 
-FreeLane has an **experimental separate-window viewer** for ordinary Windows Win32 apps and can export a named macOS `.app` launcher per application. Drag that launcher to the Dock to open it later. It starts the configured VM if stopped, waits for the interactive Windows agent, requests one application launch, finds that process's visible windows and displays genuine client-area snapshots in a separate host window.
+FreeLane opens ordinary Win32 applications in separate Mac viewer windows and can export named `.app` launchers for the Dock. Current Mac builds use hardware-decoded H.264 window video when the updated guest backend is available, with JPEG snapshot fallback. Closing a viewer stops only its video session; the Windows app and VM keep running.
 
-This is a first integration path, not Parallels Coherence parity. The viewer uses bounded JPEG snapshots, optionally refreshed one second after a successful frame, or sooner after input when the queue drains. It is not continuous video or an accelerated remote graphics protocol. Native Mac/Dock behavior needs testing with a real installed Windows VM; Linux cloud tests exercise the guest transport and viewer separately.
+The live path captures Windows client pixels, uses the dedicated binary virtio-serial port, and embeds a native NV12 VideoToolbox/AVSampleBufferDisplayLayer surface in the existing viewer. It supports one active video stream per VM. Other viewers retain snapshots; they do not take over the active encoder. Enable **Live video** in the viewer, or turn it off to use snapshots.
 
-## Download this revision
+This remains experimental. Native CI proves actual Windows-captured payloads through production host session/transport/viewer code and hardware decode; it does not establish physical-Mac screen pixels, all-app compatibility, sustained performance or Parallels Coherence parity. See [live integration evidence and limits](coherence-live-viewer.md).
 
-[Current Mac DMG/ZIP and Windows ARM64 agent](https://github.com/puma2k/freelane/releases/tag/v0.1.0-preview.23) include the matching v9/v10 app-window implementation. Required native CI and public checksums passed; see [release verification](evidence/release-preview23.json). Install the matching updated guest agent for the new input controls. Historical cloud observations below retain their original scope.
+## Matching builds
+
+Use the Mac and Windows ARM64 packages from the same release. Preview.24 enables this integration; preview.23 and earlier retain their snapshot viewer. The Windows package now includes both the guest agent and native capture helper.
 
 ## Prepare Windows
 
 Use the matching Windows ARM64 guest-agent build from this revision. Set `guest_agent=true` in the VM's `[runtime]` configuration and install the compatible signed ARM64 virtio-serial driver as described in [guest-agent setup](guest-agent.md). Run the agent in the signed-in user's interactive session. It must be available after login for Dock quick-open; the launcher does not log in or obtain credentials.
 
-An optional per-user Startup shortcut installer is provided:
+After verifying and extracting the release ZIP, run this in ordinary-user PowerShell:
 
 ```powershell
-$hash = (Get-Content -LiteralPath '.\freelane-guest-agent.exe.sha256').Split()[0]
-powershell.exe -NoProfile -File .\install-windows-agent.ps1 -Action Install -AgentPath '.\freelane-guest-agent.exe' -ExpectedSha256 $hash
+powershell.exe -NoProfile -File .\setup-windows-agent.ps1
 ```
 
-Verify the downloaded agent ZIP against the release's SHA256 before trusting its packaged executable checksum. The helper verifies a staged ARM64 executable before publishing it into the user's LocalAppData FreeLane directory and adding a minimized Startup shortcut. It does not elevate, create a service, install drivers or configure autologin. Sign in again to start it. Stop the owned agent first when updating; an existing manual agent on the serial port must also be stopped. See [install/update/rollback/uninstall](agent-lifecycle.md). Native CI verifies filesystem/shortcut operations with a real ARM64 artifact; actual startup in a normal Windows guest account remains pending.
+Setup installs the agent and matching checksum-pinned ARM64 capture helper together and creates the per-user Startup shortcut. Run the same command after stopping the installed agent to update; explicit rollback restores the old pair. It does not elevate, install drivers or enable autologin. Sign in again to start the agent. See [install/update/rollback/uninstall](agent-lifecycle.md).
+
+A VM started before the video port was provisioned must be restarted when convenient. FreeLane leaves it running and uses snapshots until then. No Windows ISO reinstall is needed for the host video feature.
 
 Protocol v1 ping/launch remain compatible with the old agent. The viewer first probes the optional **v2 window extension** with a read-only ping; an old agent returns a version error and **no app launch is sent**. Install the updated agent before using app windows. Linux agents return `window_snapshots=false` and retain normal v1 operation.
 
@@ -54,7 +57,7 @@ When launching a stopped VM from Finder/Dock, the supervisor retains the inherit
 - Select the desired visible window for the launched PID; refresh the list for dialogs in the same process.
 - Click inside the captured image to send a mapped primary click and focus the host image.
 - Type after focusing the image, or use **Gửi chữ** to send up to 1024 UTF-8 bytes to the guest window's focused control. Enter/Tab/navigation/Delete/Backspace/Escape are supported.
-- Use **Chụp lại** or periodic refresh. An acknowledged guest capture timeout gets one read-only retry after a one-second pause. Other errors, or a second timeout, stop automatic refresh; pending unsent input is canceled and its count is reported. Inspect before sending another mutation.
+- With video unavailable or disabled, use **Refresh frame** or periodic refresh. An acknowledged guest capture timeout gets one read-only retry after a one-second pause. Other errors, or a second timeout, stop automatic refresh; pending unsent input is canceled and its count is reported. Inspect before sending another mutation.
 
 Every guest window target includes HWND, PID and process creation time. The agent revalidates these before acting, so a recycled handle/PID is refused. Frames are bound to the selected identity, preventing late captures from a previously selected window from being displayed as another app. Input messages are delivered to that window/child control rather than injected globally. Delivery acceptance does not prove that an application used the input.
 

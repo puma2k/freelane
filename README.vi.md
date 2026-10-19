@@ -40,7 +40,7 @@ Xem [bằng chứng Windows](docs/test-evidence.md), [Ubuntu](docs/ubuntu-test-e
 - Điều khiển thiết bị mobile, cài/mở ứng dụng và chụp khung hình PNG thật.
 - CLI và **22 công cụ MCP stdio** cho build/test, điều khiển VM/mobile, chụp ảnh và gửi yêu cầu tới guest.
 
-UI hiện hiển thị ảnh chụp; VM desktop có tùy chọn cập nhật định kỳ. Video VM liên tục và chuyển tiếp bàn phím đầy đủ chưa hoàn tất; dùng cửa sổ backend để tương tác desktop. Đã có [viewer app Windows riêng và launcher Dock](docs/app-windows.vi.md) dạng thử nghiệm: ảnh chụp, thao tác chuột, nhập chữ, phím tắt có kiểm tra focus và đổi kích thước cửa sổ với agent mới. Đã có cấu hình chọn USB vật lý nhưng chưa kiểm thử phần cứng. Chia sẻ thư mục hai chiều cho Windows, tăng tốc 3D/Metal, passthrough GPU Apple và truyền cửa sổ kiểu Coherence bằng video còn đang phát triển.
+UI hiện hiển thị ảnh chụp; VM desktop có tùy chọn cập nhật định kỳ. Video VM liên tục và chuyển tiếp bàn phím đầy đủ chưa hoàn tất; dùng cửa sổ backend để tương tác desktop. [Viewer app Windows riêng và launcher Dock](docs/app-windows.vi.md) có video H.264 giải mã phần cứng trên Mac, tự dùng ảnh chụp khi video không khả dụng, cùng thao tác chuột, nhập chữ, phím tắt và đổi kích thước. Video cần bộ agent/helper Windows tương ứng và cổng video của VM. Đã có cấu hình chọn USB vật lý nhưng chưa kiểm thử phần cứng. Chia sẻ thư mục hai chiều cho Windows, tăng tốc 3D/Metal, passthrough GPU Apple và đầy đủ trải nghiệm như Coherence còn đang phát triển. CI Mac đã kiểm tra dữ liệu hình Windows qua viewer; hiệu năng lâu dài và VM cài thực tế vẫn cần thử trên Mac thật.
 
 ## Tải bản thử nghiệm
 
