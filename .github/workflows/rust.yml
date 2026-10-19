@@ -65,11 +65,14 @@ jobs:
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: 1.99.0
           targets: aarch64-pc-windows-msvc
-      - run: python3 scripts/ci-test-status.py guest
+      - run: python scripts/ci-test-status.py guest
       - run: cargo check --locked -p freelane-guest-agent --target aarch64-pc-windows-msvc
   guest-agent-arm64-build:
     runs-on: ubuntu-latest

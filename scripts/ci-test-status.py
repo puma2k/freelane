@@ -35,7 +35,7 @@ def main():
     allowed = set()
     for directory in (ROOT / "tests", ROOT / "crates"):
         for file in directory.rglob("*.rs"):
-            allowed.update(re.findall(r"\bfn ([A-Za-z0-9_]+)\s*\(", file.read_text()))
+            allowed.update(re.findall(r"\bfn ([A-Za-z0-9_]+)\s*\(", file.read_text(encoding="utf-8")))
     process = subprocess.Popen(commands[sys.argv[1]], cwd=ROOT, stdout=subprocess.PIPE,
                                stderr=subprocess.STDOUT)
     failed = set()
