@@ -33,8 +33,35 @@ Fresh read-only code review: no important regressions found in lifecycle guards,
 - P3: Ubuntu currently uses the same decorative blue illustration, with actual Ubuntu identity and configuration rendered separately.
 - Physical Apple Silicon: SF rendering, native chrome/material, actual VM display and input, and sleep/wake remain for the previously deferred Mac acceptance.
 
-final result: blocked
+final result: passed
 
 ## Verification
 
 Final workspace rerun after semibold and fixture setup fix: 284 passed, 9 ignored, 0 failures. Desktop build and clippy passed. Font-family test setup initially caused two renderer-test failures after semibold; fixed by installing production styles in the test context, without changing assertions. No claim that an interrupted screenshot step passed.
+
+
+## 2026-10-23 follow-up: compact native UI and final font verification
+
+The earlier screenshot blocker is resolved: built the current source and captured the real desktop after semibold setup on an owned authenticated Xvfb display. No personal library, VM boot, clipboard content or existing display was used.
+
+Evidence directory: `docs/design-preview/polish-20261023/`.
+- `overview-vi.png`, `overview-en.png`: 1440×1024, density 1.
+- `compact-vi.png`, `compact-en.png`: 800×600, density 1.
+- `menu-vi.png`, `menu-en.png`, `display-vi.png`, `display-en.png`: actual menu selection and resulting secondary tab.
+- `applications-vi.png`, `applications-en.png`, `sharing-vi.png`, `sharing-en.png`: existing functional panels remain accessible (guest operations correctly unavailable in this fixture).
+- `comparison.png`: source and rendered implementation together, aspect-preserving thumbnails for composition review. Native client has no simulated macOS decorations or outer canvas; full source remains 1487×1058. No pixel-perfect equality claimed across these frame differences.
+- `header-comparison.png`: raw 1× source/implementation crops, together, for legible typography and control comparison.
+
+Findings resolved:
+- P2 minimum-window density: reduce decorative preview height only in short/narrow windows and constrain the sidebar to 240px. Start, Settings and all three primary tabs stay visible at 800×600 in both languages.
+- P2 secondary tabs wrapping: primary navigation is Overview/Sharing/Applications. Display/Details remain in More and show a selected tab when open. Verified opening Display from the actual menu.
+- P2 uneven header controls: Settings now matches the Start button's 36px minimum height.
+- Previous semibold finding: actual semibold title/sidebar/summary visible in current captures. The production font setup no longer awaits screenshot validation.
+
+Five-surface check: actual semibold weights and VI glyphs readable; no overlapping layout; blue/gray tokens preserved; generated illustration and licensed icons remain sharp and context-cached; VI/EN reflect real unknown runtime/no configured share rather than fabricated mock data. Actual snapshot input mapping and lifecycle guards are unchanged. Expected native differences from the mock include platform-owned chrome, Linux font rendering and real fixture state.
+
+Interaction checks: select fixture VM, resize, open/close More, choose Display, switch to Applications and Sharing. Backend VM boot/start was deliberately not invoked for this UI check. Native stderr contains no startup/render errors. Source diff reviewed for busy guards and secondary-view access.
+
+Verification: `cargo build -p freelane-desktop --locked`; `cargo test --workspace --locked` (284 passed, 9 ignored, 0 failed); desktop all-target clippy with warnings denied; format/diff checks passed.
+
+Remaining P3: Ubuntu shares the blue decorative illustration; compact VI unknown-status badge wraps onto two readable lines. Physical Mac font/material/compositor and actual VM acceptance remain outside this Linux UI verification.

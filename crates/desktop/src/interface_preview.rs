@@ -12,7 +12,8 @@ impl Desktop {
         if ui
             .add_enabled(
                 !busy,
-                interface_assets::button(ctx, "settings", lang.text("Settings")),
+                interface_assets::button(ctx, "settings", lang.text("Settings"))
+                    .min_size(egui::vec2(0.0, 36.0)),
             )
             .clicked()
         {
@@ -66,6 +67,15 @@ impl Desktop {
                     }
                 }
                 ui.separator();
+                for (label, view) in [
+                    ("Display", interface::View::Display),
+                    ("Details", interface::View::Details),
+                ] {
+                    if ui.button(lang.text(label)).clicked() {
+                        self.view = view;
+                        ui.close();
+                    }
+                }
                 if ui.button(lang.text("Backups")).clicked() {
                     self.view = interface::View::Recovery;
                     ui.close();
@@ -81,7 +91,12 @@ impl Desktop {
         viewport_height: f32,
     ) {
         let width = ui.available_width();
-        let height = (width / 2.27).min((viewport_height * 0.48).max(180.0));
+        let preview_budget = if width < 650.0 && viewport_height < 720.0 {
+            (viewport_height * 0.26).clamp(112.0, 180.0)
+        } else {
+            (viewport_height * 0.48).max(180.0)
+        };
+        let height = (width / 2.27).min(preview_budget);
         if let Some(texture) = &self.texture {
             // Input coordinates are mapped to the actual displayed snapshot, never the decoration.
             let frame = ui.add(
@@ -116,7 +131,11 @@ impl Desktop {
                     .maintain_aspect_ratio(false)
                     .corner_radius(14),
             );
-            let badge = egui::Rect::from_center_size(frame.rect.center(), egui::vec2(132.0, 132.0));
+            let badge_size = (height - 16.0).clamp(88.0, 132.0);
+            let badge = egui::Rect::from_center_size(
+                frame.rect.center(),
+                egui::vec2(badge_size, badge_size),
+            );
             let mut overlay = ui.new_child(egui::UiBuilder::new().max_rect(badge));
             {
                 let ui = &mut overlay;
@@ -125,14 +144,17 @@ impl Desktop {
                     .corner_radius(66)
                     .inner_margin(14)
                     .show(ui, |ui| {
-                        ui.set_width(104.0);
-                        ui.set_min_height(104.0);
-                        ui.add_space(8.0);
+                        ui.set_width(badge_size - 28.0);
+                        ui.set_min_height(badge_size - 28.0);
+                        ui.add_space(if badge_size < 110.0 { 0.0 } else { 8.0 });
                         ui.vertical_centered(|ui| {
                             let symbol = interface_assets::texture(ctx, "power");
                             ui.add(
                                 egui::Image::new(&symbol)
-                                    .fit_to_exact_size(egui::vec2(36.0, 36.0))
+                                    .fit_to_exact_size(egui::vec2(
+                                        if badge_size < 110.0 { 24.0 } else { 36.0 },
+                                        if badge_size < 110.0 { 24.0 } else { 36.0 },
+                                    ))
                                     .tint(egui::Color32::WHITE),
                             );
                             ui.label(

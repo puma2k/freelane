@@ -46,3 +46,10 @@
 - [x] Run formatting/clippy and record physical Mac rendering limitations.
 
 Final font-adjustment screenshot recapture was interrupted. Existing captures are before that change; visual QA remains blocked on recapture. Source/build/tests are ready for review.
+
+## 2026-10-23 continuation
+
+- [x] Finish semibold capture on current source (earlier interrupted step resolved).
+- [x] Reduce compact-window preview/sidebar density, keep three everyday tabs and retain secondary views in More.
+- [x] Capture VI/EN overview, compact menu, Display, Applications and Sharing; compare source/rendered full view and focused header.
+- [x] Workspace tests284passed/9ignored; desktop clippy/build and formatting passed. See latest `design-qa.md` result.

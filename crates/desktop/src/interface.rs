@@ -175,7 +175,13 @@ impl Desktop {
             });
         egui::Panel::left("library")
             .default_size(300.0)
-            .size_range(210.0..=340.0)
+            .size_range(
+                210.0..=if ctx.content_rect().width() < 1000.0 {
+                    240.0
+                } else {
+                    340.0
+                },
+            )
             .frame(
                 egui::Frame::new()
                     .fill(egui::Color32::from_rgb(244, 245, 248))
@@ -375,8 +381,13 @@ impl Desktop {
                 View::Applications,
                 lang.text("Applications"),
             );
-            ui.selectable_value(&mut self.view, View::Display, lang.text("Display"));
-            ui.selectable_value(&mut self.view, View::Details, lang.text("Details"));
+            // Keep the everyday navigation compact; secondary views live in More.
+            if self.view == View::Display {
+                ui.selectable_value(&mut self.view, View::Display, lang.text("Display"));
+            }
+            if self.view == View::Details {
+                ui.selectable_value(&mut self.view, View::Details, lang.text("Details"));
+            }
         });
         ui.add_space(8.0);
         ui.separator();
